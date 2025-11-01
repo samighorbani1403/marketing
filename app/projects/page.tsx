@@ -25,19 +25,42 @@ interface Project {
 export default function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
 
   const router = useRouter()
 
   useEffect(() => {
-    fetchProjects()
+    // دریافت ID کاربر فعلی
+    fetch('/api/auth/me')
+      .then(res => res.ok ? res.json() : null)
+      .then(user => {
+        if (user && user.id) {
+          setCurrentUserId(user.id)
+        } else {
+          // برای تست: استفاده از userId پیش‌فرض
+          setCurrentUserId('2')
+        }
+      })
+      .catch(() => {
+        setCurrentUserId('2')
+      })
   }, [])
 
+  useEffect(() => {
+    if (currentUserId) {
+      fetchProjects()
+    }
+  }, [currentUserId])
+
   const fetchProjects = async () => {
+    if (!currentUserId) return
+    
     try {
-      const response = await fetch('/api/projects')
+      // فقط پروژه‌های مربوط به کارمند فعلی
+      const response = await fetch(`/api/projects?employeeId=${currentUserId}`)
       if (response.ok) {
         const data = await response.json()
-        setProjects(data.projects)
+        setProjects(data.projects || [])
       } else {
         console.error('Failed to fetch projects')
       }

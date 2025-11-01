@@ -46,21 +46,24 @@ model Contact {
 }
 
 model Project {
-  id          String    @id @default(cuid())
-  name        String
-  client      String
-  clientEmail String?
-  clientPhone String?
-  budget      Int
-  startDate   DateTime
-  endDate     DateTime?
-  description String?
-  priority    String    @default("medium")
-  status      String    @default("pending")
-  progress    Int       @default(0)
-  sentToManager Boolean  @default(false)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id             String    @id @default(cuid())
+  name           String
+  client         String
+  clientEmail    String?
+  clientPhone    String?
+  budget         Int
+  startDate      DateTime
+  endDate        DateTime?
+  description    String?
+  priority       String    @default("medium")
+  status         String    @default("pending")
+  progress       Int       @default(0)
+  sentToManager  Boolean   @default(false)
+  employeeId     String?
+  employeeSalary Int?
+  totalPrice     Int?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   @@map("projects")
 }
@@ -80,4 +83,290 @@ model Client {
   updatedAt DateTime @updatedAt
 
   @@map("clients")
+}
+
+model Employee {
+  id                String    @id @default(cuid())
+  fullName          String
+  education         String?
+  birthDate         DateTime?
+  fatherName        String?
+  nationalId        String?   @unique
+  interviewDate     DateTime?
+  hireDate          DateTime?
+  phone             String?
+  address           String?
+  employeeNumber    String?   @unique
+  photoDataUrl      String?
+  maritalStatus     String?   @default("single")
+  childrenCount     Int       @default(0)
+  religion          String?
+  workType          String?   @default("full-time")
+  salary            Int?
+  position          String?
+  employeeRank      String?
+  username          String?   @unique
+  password          String?
+  terminationDate   DateTime?
+  terminationReason String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  requests          Request[]
+
+  @@map("employees")
+}
+
+model Request {
+  id              String    @id @default(cuid())
+  type            String    // "leave" or "reference"
+  employeeId      String?
+  employee        Employee?  @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  employeeName    String
+  employeePosition String?
+  status          String    @default("pending") // "pending", "approved", "rejected"
+  
+  // Leave request fields
+  leaveStartDate  DateTime?
+  leaveEndDate    DateTime?
+  leaveDays       Int?
+  leaveReason     String?
+  leaveType       String?   // "annual", "sick", "emergency", etc.
+  
+  // Reference letter fields
+  referencePurpose String?
+  referenceText    String?
+  
+  // Manager response
+  managerResponse String?
+  managerResponseDate DateTime?
+  respondedBy     String?
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@map("requests")
+}
+
+model Correspondence {
+  id              String    @id @default(cuid())
+  title           String
+  fileName        String?
+  fileType        String?
+  fileSize        Int?
+  fileDataUrl     String?   // Base64 encoded file
+  senderId        String?
+  senderName      String
+  recipientId     String?
+  recipientName  String?
+  message         String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@map("correspondences")
+}
+
+model PrivateFeedback {
+  id              String    @id @default(cuid())
+  employeeId      String?
+  employeeName    String
+  employeePosition String?
+  title           String?
+  message         String
+  status          String    @default("unread") // "unread", "read", "replied"
+  managerReply    String?
+  repliedAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@map("private_feedbacks")
+}
+
+model Announcement {
+  id              String    @id @default(cuid())
+  type            String    // "individual" or "public"
+  title           String
+  body            String
+  createdBy       String   @default("مدیر سیستم")
+  createdById     String?
+  
+  // For individual announcements
+  recipientIds    String?  // Comma-separated list of employee IDs
+  recipientNames  String?   // Comma-separated list of employee names
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  comments        AnnouncementComment[]
+
+  @@map("announcements")
+}
+
+model AnnouncementComment {
+  id              String    @id @default(cuid())
+  announcementId  String
+  announcement    Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  userId          String?
+  userName        String
+  body            String
+  isManagerReply  Boolean   @default(false)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@map("announcement_comments")
+}
+
+model SalaryPayment {
+  id              String    @id @default(cuid())
+  employeeId     String?
+  employeeName   String
+  paymentPeriod  String    // "monthly", "weekly", etc.
+  month          String?   // Selected month
+  paymentDate    DateTime
+  deductions     Int       @default(0)
+  leaveDays      Int       @default(0)
+  employeeRank   String?
+  amount         Int
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@map("salary_payments")
+}
+
+model CompanyBill {
+  id              String    @id @default(cuid())
+  billType        String    // "rent", "building_charge", "water", "electricity", "gas", "phone"
+  period          String?   // Selected month
+  startDate       DateTime?
+  endDate         DateTime?
+  paymentDate     DateTime
+  amount          Int
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@map("company_bills")
+}
+
+model MonthlyExpense {
+  id              String    @id @default(cuid())
+  title           String
+  expenseDate     DateTime
+  amount          Int
+  paidBy          String?   // Person who paid
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@map("monthly_expenses")
+}
+
+model MarketerPerformance {
+  id              String    @id @default(cuid())
+  marketerId      String?
+  marketerName     String
+  period           String?   // Month/Year
+  salesCount       Int       @default(0)
+  salesAmount      Int       @default(0)
+  newClients       Int       @default(0)
+  campaignsCount   Int       @default(0)
+  conversionRate    Float?    // Percentage
+  notes            String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@map("marketer_performances")
+}
+
+model MarketerShare {
+  id              String    @id @default(cuid())
+  marketerId      String?
+  marketerName     String
+  shareAmount      Int
+  sharePercentage  Float?    // Percentage of total
+  period           String?   // Month/Year
+  paymentDate      DateTime
+  paymentStatus    String    @default("pending") // "pending", "paid"
+  notes            String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@map("marketer_shares")
+}
+
+model CommissionType {
+  id              String    @id @default(cuid())
+  name            String    // نام نوع پورسانت
+  productCategory String?   // دسته‌بندی محصول
+  productName     String?   // نام محصول خاص
+  commissionRate  Float     // نرخ پورسانت (درصد)
+  commissionType  String    // "percentage" or "fixed"
+  fixedAmount     Int?      // مبلغ ثابت (اگر نوع fixed باشد)
+  minAmount       Int?      // حداقل مبلغ فروش
+  maxAmount       Int?      // حداکثر مبلغ فروش
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  assignments     CommissionAssignment[]
+
+  @@map("commission_types")
+}
+
+model CommissionAssignment {
+  id              String    @id @default(cuid())
+  commissionTypeId String
+  commissionType  CommissionType @relation(fields: [commissionTypeId], references: [id], onDelete: Cascade)
+  marketerId      String?
+  marketerName     String
+  factor           String?   // فاکتور تخصیص (مثل "senior", "monthly_target", etc.)
+  factorValue      String?   // مقدار فاکتور
+  additionalRate   Float     @default(0) // نرخ اضافی برای این کاربر
+  isActive         Boolean   @default(true)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@map("commission_assignments")
+}
+
+model CommissionPayment {
+  id              String    @id @default(cuid())
+  marketerId      String?
+  marketerName     String
+  commissionTypeId String?
+  invoiceId        String?   // ID فاکتور مربوطه
+  invoiceAmount    Int?      // مبلغ فاکتور
+  commissionAmount Int       // مبلغ پورسانت
+  commissionRate   Float?    // نرخ پورسانت اعمال شده
+  period           String?   // دوره (ماه/سال)
+  paymentDate      DateTime?
+  paymentStatus    String    @default("pending") // "pending", "paid", "cancelled"
+  notes            String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@map("commission_payments")
+}
+
+model Overtime {
+  id              String    @id @default(cuid())
+  employeeId      String?
+  employeeName     String
+  date            DateTime
+  hours           Float     // ساعت اضافه کاری
+  notes           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@map("overtimes")
+}
+
+model Absence {
+  id              String    @id @default(cuid())
+  employeeId      String?
+  employeeName     String
+  date            DateTime
+  reason          String    // "justified", "unjustified", "medical"
+  notes           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@map("absences")
 }

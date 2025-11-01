@@ -4,8 +4,19 @@ import { prisma } from '@/lib/prisma';
 export async function GET(request: NextRequest) {
   try {
     console.log('📋 Fetching projects...');
+    
+    const { searchParams } = new URL(request.url);
+    const employeeId = searchParams.get('employeeId');
+    const isAdmin = searchParams.get('admin') === 'true';
+
+    // فیلتر بر اساس employeeId اگر وجود داشته باشد
+    const where: any = {};
+    if (employeeId) {
+      where.employeeId = employeeId;
+    }
 
     const projects = await prisma.project.findMany({
+      where,
       orderBy: {
         createdAt: 'desc'
       }
@@ -15,22 +26,37 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      projects: projects.map(project => ({
-        id: project.id,
-        name: project.name,
-        client: project.client,
-        clientEmail: project.clientEmail,
-        clientPhone: project.clientPhone,
-        budget: project.budget,
-        startDate: project.startDate.toISOString().split('T')[0],
-        endDate: project.endDate ? project.endDate.toISOString().split('T')[0] : null,
-        description: project.description,
-        priority: project.priority,
-        status: project.status,
-        progress: project.progress,
-        sentToManager: (project as any).sentToManager ?? false,
-        createdAt: project.createdAt.toISOString().split('T')[0]
-      }))
+      projects: projects.map(project => {
+        const base = {
+          id: project.id,
+          name: project.name,
+          client: project.client,
+          clientEmail: project.clientEmail,
+          clientPhone: project.clientPhone,
+          budget: project.budget,
+          startDate: project.startDate.toISOString().split('T')[0],
+          endDate: project.endDate ? project.endDate.toISOString().split('T')[0] : null,
+          description: project.description,
+          priority: project.priority,
+          status: project.status,
+          progress: project.progress,
+          sentToManager: (project as any).sentToManager ?? false,
+          employeeId: (project as any).employeeId || null,
+          createdAt: project.createdAt.toISOString().split('T')[0]
+        };
+        
+        // فقط برای مدیر: فیلدهای مالی را نمایش بده
+        if (isAdmin) {
+          return {
+            ...base,
+            employeeSalary: (project as any).employeeSalary || null,
+            totalPrice: (project as any).totalPrice || null
+          };
+        }
+        
+        // برای کارمند: فیلدهای مالی را نشان نده
+        return base;
+      })
     });
 
   } catch (error) {
@@ -55,10 +81,13 @@ export async function POST(request: NextRequest) {
       endDate, 
       description, 
       priority, 
-      status 
+      status,
+      employeeId,
+      employeeSalary,
+      totalPrice
     } = body;
 
-    console.log('📝 Creating new project:', { name, client, budget });
+    console.log('📝 Creating new project:', { name, client, budget, employeeId });
 
     // Create project in database
     const project = await prisma.project.create({
@@ -67,14 +96,17 @@ export async function POST(request: NextRequest) {
         client,
         clientEmail: clientEmail || null,
         clientPhone: clientPhone || null,
-        budget: parseInt(budget),
+        budget: parseInt(budget) || 0,
         startDate: new Date(startDate),
         endDate: endDate ? new Date(endDate) : null,
         description: description || null,
-        priority,
+        priority: priority || 'medium',
         status: status || 'pending',
         progress: 0,
-        sentToManager: false
+        sentToManager: false,
+        employeeId: employeeId || null,
+        employeeSalary: employeeSalary ? parseInt(employeeSalary) : null,
+        totalPrice: totalPrice ? parseInt(totalPrice) : null
       }
     });
 
@@ -88,7 +120,8 @@ export async function POST(request: NextRequest) {
         client: project.client,
         status: project.status,
         budget: project.budget,
-        progress: project.progress
+        progress: project.progress,
+        employeeId: (project as any).employeeId || null
       }
     });
 
