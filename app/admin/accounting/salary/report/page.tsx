@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import AdminSidebar from '@/components/AdminSidebar'
+import moment from 'moment-jalaali'
 
 interface SalaryPayment {
   id: string
@@ -21,7 +22,52 @@ export default function SalaryReportPage() {
   const [payments, setPayments] = useState<SalaryPayment[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [filterMonth, setFilterMonth] = useState('')
+  const [persianFilterMonth, setPersianFilterMonth] = useState('')
   const [filterEmployee, setFilterEmployee] = useState('')
+
+  const convertPersianMonthToGregorian = (persianMonthStr: string): string => {
+    try {
+      const parts = persianMonthStr.split('/')
+      if (parts.length !== 2) {
+        return ''
+      }
+      
+      const jYear = parseInt(parts[0])
+      const jMonth = parseInt(parts[1])
+      
+      if (isNaN(jYear) || isNaN(jMonth) || jMonth < 1 || jMonth > 12) {
+        return ''
+      }
+      
+      // Create a date in the middle of the Persian month and convert to Gregorian
+      const m = moment(`${jYear}/${jMonth}/15`, 'jYYYY/jMM/jDD')
+      if (!m.isValid()) {
+        return ''
+      }
+      
+      const gYear = m.year()
+      const gMonth = String(m.month() + 1).padStart(2, '0')
+      return `${gYear}-${gMonth}`
+    } catch {
+      return ''
+    }
+  }
+
+  const handleMonthChange = (value: string) => {
+    const filtered = value.replace(/[^0-9/]/g, '')
+    setPersianFilterMonth(filtered)
+    
+    if (filtered.includes('/') && filtered.split('/').length === 2) {
+      const gregorian = convertPersianMonthToGregorian(filtered)
+      if (gregorian) {
+        setFilterMonth(gregorian)
+      } else {
+        setFilterMonth('')
+      }
+    } else {
+      setFilterMonth('')
+    }
+  }
 
   useEffect(() => {
     fetchPayments()
@@ -49,7 +95,34 @@ export default function SalaryReportPage() {
   }
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('fa-IR')
+    try {
+      const m = moment(dateString, 'YYYY-MM-DD')
+      if (m.isValid()) {
+        return m.format('jYYYY/jMM/jDD')
+      }
+      return new Date(dateString).toLocaleDateString('fa-IR')
+    } catch {
+      return new Date(dateString).toLocaleDateString('fa-IR')
+    }
+  }
+
+  const formatPeriod = (periodStr?: string) => {
+    if (!periodStr) return '-'
+    try {
+      // Check if it's in Gregorian format (YYYY-MM)
+      if (periodStr.match(/^\d{4}-\d{2}$/)) {
+        const parts = periodStr.split('-')
+        const year = parseInt(parts[0])
+        const month = parseInt(parts[1])
+        const m = moment(`${year}-${month}-15`, 'YYYY-MM-DD')
+        if (m.isValid()) {
+          return m.format('jYYYY/jMM')
+        }
+      }
+      return periodStr
+    } catch {
+      return periodStr
+    }
   }
 
   const formatCurrency = (amount: number) => {
@@ -77,18 +150,23 @@ export default function SalaryReportPage() {
             <div className="bg-gradient-to-br from-gray-900/80 to-gray-800/60 border border-gray-700/50 rounded-2xl p-6 mb-6">
               <div className="flex gap-4 flex-wrap">
                 <div>
-                  <label className="block text-sm text-gray-300 mb-2">فیلتر بر اساس ماه</label>
+                  <label className="block text-sm text-gray-300 mb-2">فیلتر بر اساس ماه (شمسی)</label>
                   <input
-                    type="month"
-                    value={filterMonth}
-                    onChange={e => setFilterMonth(e.target.value)}
+                    type="text"
+                    value={persianFilterMonth}
+                    onChange={e => handleMonthChange(e.target.value)}
+                    placeholder="1403/01"
+                    pattern="\d{4}/\d{1,2}"
                     className="px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:border-blue-500 focus:outline-none"
+                    dir="ltr"
                   />
+                  <p className="text-xs text-gray-500 mt-1">فرمت: سال/ماه (مثلاً: 1403/01)</p>
                 </div>
                 <div className="flex items-end">
                   <button
                     onClick={() => {
                       setFilterMonth('')
+                      setPersianFilterMonth('')
                       setFilterEmployee('')
                     }}
                     className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm transition"
@@ -151,7 +229,7 @@ export default function SalaryReportPage() {
                              payment.paymentPeriod === 'weekly' ? 'هفتگی' :
                              payment.paymentPeriod === 'biweekly' ? 'دو هفته‌ای' : 'روزانه'}
                           </td>
-                          <td className="px-4 py-3 text-gray-300">{payment.month || '—'}</td>
+                          <td className="px-4 py-3 text-gray-300">{payment.month ? formatPeriod(payment.month) : '—'}</td>
                           <td className="px-4 py-3 text-gray-300">{formatDate(payment.paymentDate)}</td>
                           <td className="px-4 py-3 text-gray-300">{formatCurrency(payment.deductions)}</td>
                           <td className="px-4 py-3 text-gray-300">{payment.leaveDays} روز</td>

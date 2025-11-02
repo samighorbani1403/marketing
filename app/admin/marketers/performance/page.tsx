@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import AdminSidebar from '@/components/AdminSidebar'
+import moment from 'moment-jalaali'
 
 interface Performance {
   id: string
@@ -26,6 +27,7 @@ export default function MarketersPerformancePage() {
   const [marketerId, setMarketerId] = useState('')
   const [marketerName, setMarketerName] = useState('')
   const [period, setPeriod] = useState('')
+  const [persianPeriod, setPersianPeriod] = useState('')
   const [salesCount, setSalesCount] = useState('')
   const [salesAmount, setSalesAmount] = useState('')
   const [newClients, setNewClients] = useState('')
@@ -62,6 +64,29 @@ export default function MarketersPerformancePage() {
       return
     }
 
+    // Convert Persian period to Gregorian (if provided)
+    let gregorianPeriod: string | null = null
+    if (persianPeriod) {
+      try {
+        const parts = persianPeriod.split('/')
+        if (parts.length === 2) {
+          const jYear = parseInt(parts[0])
+          const jMonth = parseInt(parts[1])
+          
+          if (!isNaN(jYear) && !isNaN(jMonth) && jMonth >= 1 && jMonth <= 12) {
+            const m = moment(`${jYear}/${jMonth}/15`, 'jYYYY/jMM/jDD')
+            if (m.isValid()) {
+              const gYear = m.year()
+              const gMonth = String(m.month() + 1).padStart(2, '0')
+              gregorianPeriod = `${gYear}-${gMonth}`
+            }
+          }
+        }
+      } catch {
+        // Ignore period conversion errors
+      }
+    }
+
     setIsSaving(true)
     try {
       const res = await fetch('/api/marketers/performance', {
@@ -70,7 +95,7 @@ export default function MarketersPerformancePage() {
         body: JSON.stringify({
           marketerId: marketerId || null,
           marketerName,
-          period: period || null,
+          period: gregorianPeriod,
           salesCount: salesCount || 0,
           salesAmount: salesAmount || 0,
           newClients: newClients || 0,
@@ -88,6 +113,7 @@ export default function MarketersPerformancePage() {
           setMarketerId('')
           setMarketerName('')
           setPeriod('')
+          setPersianPeriod('')
           setSalesCount('')
           setSalesAmount('')
           setNewClients('')
@@ -115,7 +141,34 @@ export default function MarketersPerformancePage() {
   }
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('fa-IR')
+    try {
+      const m = moment(dateString, 'YYYY-MM-DD')
+      if (m.isValid()) {
+        return m.format('jYYYY/jMM/jDD')
+      }
+      return new Date(dateString).toLocaleDateString('fa-IR')
+    } catch {
+      return new Date(dateString).toLocaleDateString('fa-IR')
+    }
+  }
+
+  const formatPeriod = (periodStr?: string) => {
+    if (!periodStr) return '-'
+    try {
+      // Check if it's in Gregorian format (YYYY-MM)
+      if (periodStr.match(/^\d{4}-\d{2}$/)) {
+        const parts = periodStr.split('-')
+        const year = parseInt(parts[0])
+        const month = parseInt(parts[1])
+        const m = moment(`${year}-${month}-15`, 'YYYY-MM-DD')
+        if (m.isValid()) {
+          return m.format('jYYYY/jMM')
+        }
+      }
+      return periodStr
+    } catch {
+      return periodStr
+    }
   }
 
   return (
@@ -150,13 +203,20 @@ export default function MarketersPerformancePage() {
                   </div>
 
                   <div>
-                    <label className="block text-sm text-gray-300 mb-2">دوره (ماه/سال)</label>
+                    <label className="block text-sm text-gray-300 mb-2">دوره (شمسی)</label>
                     <input
-                      type="month"
-                      value={period}
-                      onChange={e => setPeriod(e.target.value)}
+                      type="text"
+                      value={persianPeriod}
+                      onChange={e => {
+                        const value = e.target.value.replace(/[^0-9/]/g, '')
+                        setPersianPeriod(value)
+                      }}
+                      placeholder="1403/01"
+                      pattern="\d{4}/\d{1,2}"
                       className="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:border-blue-500 focus:outline-none"
+                      dir="ltr"
                     />
+                    <p className="text-xs text-gray-500 mt-1">فرمت: سال/ماه (مثلاً: 1403/01)</p>
                   </div>
 
                   <div>
@@ -272,7 +332,7 @@ export default function MarketersPerformancePage() {
                       <div className="flex items-center justify-between mb-3">
                         <h3 className="text-white font-semibold text-lg">{perf.marketerName}</h3>
                         {perf.period && (
-                          <span className="text-xs text-gray-400 bg-gray-700/50 px-2 py-1 rounded">{perf.period}</span>
+                          <span className="text-xs text-gray-400 bg-gray-700/50 px-2 py-1 rounded">{formatPeriod(perf.period)}</span>
                         )}
                       </div>
                       <div className="grid grid-cols-2 gap-3 text-sm">

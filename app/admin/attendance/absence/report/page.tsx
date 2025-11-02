@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import AdminSidebar from '@/components/AdminSidebar'
+import moment from 'moment-jalaali'
 
 interface Absence {
   id: string
@@ -25,15 +26,52 @@ export default function AbsenceReportPage() {
   const [reports, setReports] = useState<MonthlyReport[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [filterMonth, setFilterMonth] = useState('')
+  const [persianMonth, setPersianMonth] = useState('')
 
-  // Set default month to current month
-  useEffect(() => {
-    if (!filterMonth) {
-      const now = new Date()
-      const year = now.getFullYear()
-      const month = String(now.getMonth() + 1).padStart(2, '0')
-      setFilterMonth(`${year}-${month}`)
+  const convertPersianMonthToGregorian = (persianMonthStr: string): string => {
+    try {
+      const parts = persianMonthStr.split('/')
+      if (parts.length !== 2) {
+        return ''
+      }
+      
+      const jYear = parseInt(parts[0])
+      const jMonth = parseInt(parts[1])
+      
+      if (isNaN(jYear) || isNaN(jMonth) || jMonth < 1 || jMonth > 12) {
+        return ''
+      }
+      
+      // Create a date in the middle of the Persian month and convert to Gregorian
+      const m = moment(`${jYear}/${jMonth}/15`, 'jYYYY/jMM/jDD')
+      if (!m.isValid()) {
+        return ''
+      }
+      
+      const gYear = m.year()
+      const gMonth = String(m.month() + 1).padStart(2, '0')
+      return `${gYear}-${gMonth}`
+    } catch {
+      return ''
     }
+  }
+
+  // Set default month to current Persian month
+  useEffect(() => {
+    if (!persianMonth) {
+      const now = moment()
+      const year = now.jYear()
+      const month = String(now.jMonth() + 1).padStart(2, '0')
+      const persianMonthStr = `${year}/${month}`
+      setPersianMonth(persianMonthStr)
+      
+      // Convert to Gregorian and fetch report
+      const gregorian = convertPersianMonthToGregorian(persianMonthStr)
+      if (gregorian) {
+        setFilterMonth(gregorian)
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
@@ -43,9 +81,31 @@ export default function AbsenceReportPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterMonth])
 
+  const handleMonthChange = (value: string) => {
+    const filtered = value.replace(/[^0-9/]/g, '')
+    setPersianMonth(filtered)
+    
+    if (filtered.includes('/') && filtered.split('/').length === 2) {
+      const gregorian = convertPersianMonthToGregorian(filtered)
+      if (gregorian) {
+        setFilterMonth(gregorian)
+      }
+    }
+  }
+
   const fetchReport = async () => {
     if (!filterMonth) {
-      alert('لطفاً ماه را انتخاب کنید')
+      if (!persianMonth) {
+        alert('لطفاً ماه را وارد کنید')
+        return
+      }
+      
+      const gregorian = convertPersianMonthToGregorian(persianMonth)
+      if (!gregorian) {
+        alert('فرمت ماه صحیح نیست. لطفاً به فرمت 1403/01 وارد کنید')
+        return
+      }
+      setFilterMonth(gregorian)
       return
     }
 
@@ -88,7 +148,15 @@ export default function AbsenceReportPage() {
   }
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('fa-IR')
+    try {
+      const m = moment(dateString, 'YYYY-MM-DD')
+      if (m.isValid()) {
+        return m.format('jYYYY/jMM/jDD')
+      }
+      return new Date(dateString).toLocaleDateString('fa-IR')
+    } catch {
+      return new Date(dateString).toLocaleDateString('fa-IR')
+    }
   }
 
   const getReasonBadge = (reason: string) => {
@@ -127,13 +195,17 @@ export default function AbsenceReportPage() {
             <div className="bg-gradient-to-br from-gray-900/80 to-gray-800/60 border border-gray-700/50 rounded-2xl p-6 mb-6">
               <div className="flex items-center gap-4">
                 <div className="flex-1">
-                  <label className="block text-sm text-gray-300 mb-2">انتخاب ماه <span className="text-red-400">*</span></label>
+                  <label className="block text-sm text-gray-300 mb-2">انتخاب ماه (شمسی) <span className="text-red-400">*</span></label>
                   <input
-                    type="month"
-                    value={filterMonth}
-                    onChange={e => setFilterMonth(e.target.value)}
+                    type="text"
+                    value={persianMonth}
+                    onChange={e => handleMonthChange(e.target.value)}
+                    placeholder="1403/01"
+                    pattern="\d{4}/\d{1,2}"
                     className="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:border-blue-500 focus:outline-none"
+                    dir="ltr"
                   />
+                  <p className="text-xs text-gray-500 mt-1">فرمت: سال/ماه (مثلاً: 1403/01)</p>
                 </div>
                 <div className="pt-6">
                   <button
@@ -178,7 +250,7 @@ export default function AbsenceReportPage() {
                 </div>
               ) : reports.length === 0 ? (
                 <div className="text-center py-12 text-gray-400">
-                  {filterMonth ? 'داده‌ای برای این ماه یافت نشد' : 'لطفاً ماه را انتخاب کنید'}
+                  {persianMonth ? 'داده‌ای برای این ماه یافت نشد' : 'لطفاً ماه را انتخاب کنید'}
                 </div>
               ) : (
                 <div className="space-y-4">

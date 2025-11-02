@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import AdminSidebar from '@/components/AdminSidebar'
+import moment from 'moment-jalaali'
 
 interface Overtime {
   id: string
@@ -21,7 +22,7 @@ export default function OvertimePage() {
   // Form fields
   const [employeeId, setEmployeeId] = useState('')
   const [employeeName, setEmployeeName] = useState('')
-  const [date, setDate] = useState('')
+  const [persianDate, setPersianDate] = useState('')
   const [hours, setHours] = useState('')
   const [notes, setNotes] = useState('')
 
@@ -49,8 +50,39 @@ export default function OvertimePage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!employeeName.trim() || !date || !hours) {
+    if (!employeeName.trim() || !persianDate || !hours) {
       alert('لطفاً نام کارمند، تاریخ و ساعت اضافه کاری را وارد کنید')
+      return
+    }
+
+    // Convert Persian date to Gregorian
+    let gregorianDate: string
+    try {
+      // Parse Persian date (format: YYYY/MM/DD)
+      const dateParts = persianDate.split('/')
+      if (dateParts.length !== 3) {
+        alert('فرمت تاریخ صحیح نیست. لطفاً به فرمت 1403/01/15 وارد کنید')
+        return
+      }
+      
+      const jYear = parseInt(dateParts[0])
+      const jMonth = parseInt(dateParts[1])
+      const jDay = parseInt(dateParts[2])
+      
+      if (isNaN(jYear) || isNaN(jMonth) || isNaN(jDay)) {
+        alert('لطفاً تاریخ را به درستی وارد کنید')
+        return
+      }
+      
+      const m = moment(`${jYear}/${jMonth}/${jDay}`, 'jYYYY/jMM/jDD')
+      if (!m.isValid()) {
+        alert('تاریخ وارد شده معتبر نیست')
+        return
+      }
+      
+      gregorianDate = m.format('YYYY-MM-DD')
+    } catch (error) {
+      alert('خطا در تبدیل تاریخ. لطفاً تاریخ را به فرمت 1403/01/15 وارد کنید')
       return
     }
 
@@ -68,7 +100,7 @@ export default function OvertimePage() {
         body: JSON.stringify({
           employeeId: employeeId || null,
           employeeName,
-          date,
+          date: gregorianDate,
           hours: hoursNum,
           notes: notes || null
         })
@@ -81,7 +113,7 @@ export default function OvertimePage() {
           // Reset form
           setEmployeeId('')
           setEmployeeName('')
-          setDate('')
+          setPersianDate('')
           setHours('')
           setNotes('')
           fetchOvertimes()
@@ -101,7 +133,15 @@ export default function OvertimePage() {
   }
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('fa-IR')
+    try {
+      const m = moment(dateString, 'YYYY-MM-DD')
+      if (m.isValid()) {
+        return m.format('jYYYY/jMM/jDD')
+      }
+      return new Date(dateString).toLocaleDateString('fa-IR')
+    } catch {
+      return new Date(dateString).toLocaleDateString('fa-IR')
+    }
   }
 
   return (
@@ -136,14 +176,21 @@ export default function OvertimePage() {
                   </div>
 
                   <div>
-                    <label className="block text-sm text-gray-300 mb-2">تاریخ <span className="text-red-400">*</span></label>
+                    <label className="block text-sm text-gray-300 mb-2">تاریخ (شمسی) <span className="text-red-400">*</span></label>
                     <input
-                      type="date"
-                      value={date}
-                      onChange={e => setDate(e.target.value)}
+                      type="text"
+                      value={persianDate}
+                      onChange={e => {
+                        const value = e.target.value.replace(/[^0-9/]/g, '')
+                        setPersianDate(value)
+                      }}
+                      placeholder="1403/01/15"
+                      pattern="\d{4}/\d{1,2}/\d{1,2}"
                       required
                       className="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:border-blue-500 focus:outline-none"
+                      dir="ltr"
                     />
+                    <p className="text-xs text-gray-500 mt-1">فرمت: سال/ماه/روز (مثلاً: 1403/01/15)</p>
                   </div>
 
                   <div>

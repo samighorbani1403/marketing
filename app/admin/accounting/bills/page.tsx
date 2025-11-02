@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import AdminSidebar from '@/components/AdminSidebar'
+import moment from 'moment-jalaali'
 
 interface Bill {
   id: string
@@ -31,9 +32,13 @@ export default function AdminBillsPage() {
   // Form fields
   const [billType, setBillType] = useState('')
   const [period, setPeriod] = useState('')
+  const [persianPeriod, setPersianPeriod] = useState('')
   const [startDate, setStartDate] = useState('')
+  const [persianStartDate, setPersianStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
+  const [persianEndDate, setPersianEndDate] = useState('')
   const [paymentDate, setPaymentDate] = useState('')
+  const [persianPaymentDate, setPersianPaymentDate] = useState('')
   const [amount, setAmount] = useState('')
 
   useEffect(() => {
@@ -57,6 +62,61 @@ export default function AdminBillsPage() {
     }
   }
 
+  const convertPersianDateToGregorian = (persianDateStr: string): string | null => {
+    if (!persianDateStr) return null
+    try {
+      const dateParts = persianDateStr.split('/')
+      if (dateParts.length !== 3) {
+        return null
+      }
+      
+      const jYear = parseInt(dateParts[0])
+      const jMonth = parseInt(dateParts[1])
+      const jDay = parseInt(dateParts[2])
+      
+      if (isNaN(jYear) || isNaN(jMonth) || isNaN(jDay)) {
+        return null
+      }
+      
+      const m = moment(`${jYear}/${jMonth}/${jDay}`, 'jYYYY/jMM/jDD')
+      if (!m.isValid()) {
+        return null
+      }
+      
+      return m.format('YYYY-MM-DD')
+    } catch {
+      return null
+    }
+  }
+
+  const convertPersianMonthToGregorian = (persianMonthStr: string): string | null => {
+    if (!persianMonthStr) return null
+    try {
+      const parts = persianMonthStr.split('/')
+      if (parts.length !== 2) {
+        return null
+      }
+      
+      const jYear = parseInt(parts[0])
+      const jMonth = parseInt(parts[1])
+      
+      if (isNaN(jYear) || isNaN(jMonth) || jMonth < 1 || jMonth > 12) {
+        return null
+      }
+      
+      const m = moment(`${jYear}/${jMonth}/15`, 'jYYYY/jMM/jDD')
+      if (!m.isValid()) {
+        return null
+      }
+      
+      const gYear = m.year()
+      const gMonth = String(m.month() + 1).padStart(2, '0')
+      return `${gYear}-${gMonth}`
+    } catch {
+      return null
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
@@ -65,13 +125,34 @@ export default function AdminBillsPage() {
       return
     }
 
-    if (!paymentDate) {
+    if (!persianPaymentDate) {
       alert('لطفاً تاریخ پرداخت را وارد کنید')
       return
     }
 
     if (!amount || parseFloat(amount) <= 0) {
       alert('لطفاً مبلغ پرداخت را وارد کنید')
+      return
+    }
+
+    // Convert Persian dates to Gregorian
+    const gregorianPaymentDate = convertPersianDateToGregorian(persianPaymentDate)
+    if (!gregorianPaymentDate) {
+      alert('فرمت تاریخ پرداخت صحیح نیست. لطفاً به فرمت 1403/01/15 وارد کنید')
+      return
+    }
+
+    const gregorianPeriod = persianPeriod ? convertPersianMonthToGregorian(persianPeriod) : null
+    const gregorianStartDate = persianStartDate ? convertPersianDateToGregorian(persianStartDate) : null
+    const gregorianEndDate = persianEndDate ? convertPersianDateToGregorian(persianEndDate) : null
+
+    if (persianStartDate && !gregorianStartDate) {
+      alert('فرمت "از تاریخ" صحیح نیست. لطفاً به فرمت 1403/01/15 وارد کنید')
+      return
+    }
+
+    if (persianEndDate && !gregorianEndDate) {
+      alert('فرمت "تا تاریخ" صحیح نیست. لطفاً به فرمت 1403/01/15 وارد کنید')
       return
     }
 
@@ -82,10 +163,10 @@ export default function AdminBillsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           billType,
-          period: period || null,
-          startDate: startDate || null,
-          endDate: endDate || null,
-          paymentDate,
+          period: gregorianPeriod,
+          startDate: gregorianStartDate,
+          endDate: gregorianEndDate,
+          paymentDate: gregorianPaymentDate,
           amount
         })
       })
@@ -97,9 +178,13 @@ export default function AdminBillsPage() {
           // Reset form
           setBillType('')
           setPeriod('')
+          setPersianPeriod('')
           setStartDate('')
+          setPersianStartDate('')
           setEndDate('')
+          setPersianEndDate('')
           setPaymentDate('')
+          setPersianPaymentDate('')
           setAmount('')
           fetchBills()
         } else {
@@ -118,7 +203,34 @@ export default function AdminBillsPage() {
   }
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('fa-IR')
+    try {
+      const m = moment(dateString, 'YYYY-MM-DD')
+      if (m.isValid()) {
+        return m.format('jYYYY/jMM/jDD')
+      }
+      return new Date(dateString).toLocaleDateString('fa-IR')
+    } catch {
+      return new Date(dateString).toLocaleDateString('fa-IR')
+    }
+  }
+
+  const formatPeriod = (periodStr?: string) => {
+    if (!periodStr) return '-'
+    try {
+      // Check if it's in Gregorian format (YYYY-MM)
+      if (periodStr.match(/^\d{4}-\d{2}$/)) {
+        const parts = periodStr.split('-')
+        const year = parseInt(parts[0])
+        const month = parseInt(parts[1])
+        const m = moment(`${year}-${month}-15`, 'YYYY-MM-DD')
+        if (m.isValid()) {
+          return m.format('jYYYY/jMM')
+        }
+      }
+      return periodStr
+    } catch {
+      return periodStr
+    }
   }
 
   const formatCurrency = (amount: number) => {
@@ -164,44 +276,72 @@ export default function AdminBillsPage() {
                   </div>
 
                   <div>
-                    <label className="block text-sm text-gray-300 mb-2">دوره قبض (ماه)</label>
+                    <label className="block text-sm text-gray-300 mb-2">دوره قبض (شمسی)</label>
                     <input
-                      type="month"
-                      value={period}
-                      onChange={e => setPeriod(e.target.value)}
+                      type="text"
+                      value={persianPeriod}
+                      onChange={e => {
+                        const value = e.target.value.replace(/[^0-9/]/g, '')
+                        setPersianPeriod(value)
+                      }}
+                      placeholder="1403/01"
+                      pattern="\d{4}/\d{1,2}"
                       className="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:border-blue-500 focus:outline-none"
+                      dir="ltr"
                     />
+                    <p className="text-xs text-gray-500 mt-1">فرمت: سال/ماه (مثلاً: 1403/01)</p>
                   </div>
 
                   <div>
-                    <label className="block text-sm text-gray-300 mb-2">از تاریخ</label>
+                    <label className="block text-sm text-gray-300 mb-2">از تاریخ (شمسی)</label>
                     <input
-                      type="date"
-                      value={startDate}
-                      onChange={e => setStartDate(e.target.value)}
+                      type="text"
+                      value={persianStartDate}
+                      onChange={e => {
+                        const value = e.target.value.replace(/[^0-9/]/g, '')
+                        setPersianStartDate(value)
+                      }}
+                      placeholder="1403/01/15"
+                      pattern="\d{4}/\d{1,2}/\d{1,2}"
                       className="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:border-blue-500 focus:outline-none"
+                      dir="ltr"
                     />
+                    <p className="text-xs text-gray-500 mt-1">فرمت: سال/ماه/روز</p>
                   </div>
 
                   <div>
-                    <label className="block text-sm text-gray-300 mb-2">تا تاریخ</label>
+                    <label className="block text-sm text-gray-300 mb-2">تا تاریخ (شمسی)</label>
                     <input
-                      type="date"
-                      value={endDate}
-                      onChange={e => setEndDate(e.target.value)}
+                      type="text"
+                      value={persianEndDate}
+                      onChange={e => {
+                        const value = e.target.value.replace(/[^0-9/]/g, '')
+                        setPersianEndDate(value)
+                      }}
+                      placeholder="1403/01/15"
+                      pattern="\d{4}/\d{1,2}/\d{1,2}"
                       className="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:border-blue-500 focus:outline-none"
+                      dir="ltr"
                     />
+                    <p className="text-xs text-gray-500 mt-1">فرمت: سال/ماه/روز</p>
                   </div>
 
                   <div>
-                    <label className="block text-sm text-gray-300 mb-2">تاریخ پرداخت <span className="text-red-400">*</span></label>
+                    <label className="block text-sm text-gray-300 mb-2">تاریخ پرداخت (شمسی) <span className="text-red-400">*</span></label>
                     <input
-                      type="date"
-                      value={paymentDate}
-                      onChange={e => setPaymentDate(e.target.value)}
+                      type="text"
+                      value={persianPaymentDate}
+                      onChange={e => {
+                        const value = e.target.value.replace(/[^0-9/]/g, '')
+                        setPersianPaymentDate(value)
+                      }}
+                      placeholder="1403/01/15"
+                      pattern="\d{4}/\d{1,2}/\d{1,2}"
                       required
                       className="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:border-blue-500 focus:outline-none"
+                      dir="ltr"
                     />
+                    <p className="text-xs text-gray-500 mt-1">فرمت: سال/ماه/روز (مثلاً: 1403/01/15)</p>
                   </div>
 
                   <div>
@@ -261,7 +401,7 @@ export default function AdminBillsPage() {
                           </div>
                           <div className="text-gray-300">
                             <div className="text-sm">مبلغ: <span className="text-green-400 font-semibold">{formatCurrency(bill.amount)} تومان</span></div>
-                            {bill.period && <div className="text-xs text-gray-500">دوره: {bill.period}</div>}
+                            {bill.period && <div className="text-xs text-gray-500">دوره: {formatPeriod(bill.period)}</div>}
                           </div>
                         </div>
                         <div className="text-right text-sm text-gray-400">

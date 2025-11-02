@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import moment from 'moment-jalaali'
 
 interface Employee {
   id: string
@@ -18,7 +19,9 @@ export default function AdminNewProject(){
   const [totalPrice, setTotalPrice] = useState('')
   const [budget, setBudget] = useState('')
   const [startDate, setStartDate] = useState('')
+  const [persianStartDate, setPersianStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
+  const [persianEndDate, setPersianEndDate] = useState('')
   const [priority, setPriority] = useState('medium')
   const [status, setStatus] = useState('pending')
   const [desc, setDesc] = useState('')
@@ -35,14 +38,53 @@ export default function AdminNewProject(){
     ])
   }, [])
 
+  const convertPersianDateToGregorian = (persianDateStr: string): string | null => {
+    if (!persianDateStr) return null
+    try {
+      const dateParts = persianDateStr.split('/')
+      if (dateParts.length !== 3) {
+        return null
+      }
+      
+      const jYear = parseInt(dateParts[0])
+      const jMonth = parseInt(dateParts[1])
+      const jDay = parseInt(dateParts[2])
+      
+      if (isNaN(jYear) || isNaN(jMonth) || isNaN(jDay)) {
+        return null
+      }
+      
+      const m = moment(`${jYear}/${jMonth}/${jDay}`, 'jYYYY/jMM/jDD')
+      if (!m.isValid()) {
+        return null
+      }
+      
+      return m.format('YYYY-MM-DD')
+    } catch {
+      return null
+    }
+  }
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!name.trim() || !client.trim() || !startDate) {
+    if (!name.trim() || !client.trim() || !persianStartDate) {
       return alert('نام پروژه، مشتری و تاریخ شروع الزامی است')
     }
     if (!employeeId) {
       return alert('لطفاً کارمند مسئول را انتخاب کنید')
     }
+
+    // Convert Persian dates to Gregorian
+    const gregorianStartDate = convertPersianDateToGregorian(persianStartDate)
+    if (!gregorianStartDate) {
+      return alert('فرمت تاریخ شروع صحیح نیست. لطفاً به فرمت 1403/01/15 وارد کنید')
+    }
+
+    const gregorianEndDate = persianEndDate ? convertPersianDateToGregorian(persianEndDate) : null
+    if (persianEndDate && !gregorianEndDate) {
+      return alert('فرمت تاریخ پایان صحیح نیست. لطفاً به فرمت 1403/01/15 وارد کنید')
+    }
+
     setSaving(true)
     try {
       const res = await fetch('/api/projects', {
@@ -57,8 +99,8 @@ export default function AdminNewProject(){
           employeeSalary: employeeSalary.trim() ? parseInt(employeeSalary.trim()) : null,
           totalPrice: totalPrice.trim() ? parseInt(totalPrice.trim()) : null,
           budget: budget.trim() ? parseInt(budget.trim()) : 0,
-          startDate,
-          endDate: endDate.trim() || null,
+          startDate: gregorianStartDate,
+          endDate: gregorianEndDate,
           description: desc.trim() || null,
           priority,
           status
@@ -76,7 +118,9 @@ export default function AdminNewProject(){
         setTotalPrice('')
         setBudget('')
         setStartDate('')
+        setPersianStartDate('')
         setEndDate('')
+        setPersianEndDate('')
         setPriority('medium')
         setStatus('pending')
         setDesc('')
@@ -238,23 +282,37 @@ export default function AdminNewProject(){
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-300 mb-2">تاریخ شروع <span className="text-red-400">*</span></label>
+                  <label className="block text-sm text-gray-300 mb-2">تاریخ شروع (شمسی) <span className="text-red-400">*</span></label>
                   <input
-                    type="date"
-                    value={startDate}
-                    onChange={e=>setStartDate(e.target.value)}
+                    type="text"
+                    value={persianStartDate}
+                    onChange={e => {
+                      const value = e.target.value.replace(/[^0-9/]/g, '')
+                      setPersianStartDate(value)
+                    }}
+                    placeholder="1403/01/15"
+                    pattern="\d{4}/\d{1,2}/\d{1,2}"
                     required
                     className="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:border-blue-500 focus:outline-none"
+                    dir="ltr"
                   />
+                  <p className="text-xs text-gray-500 mt-1">فرمت: سال/ماه/روز (مثلاً: 1403/01/15)</p>
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-300 mb-2">تاریخ پایان</label>
+                  <label className="block text-sm text-gray-300 mb-2">تاریخ پایان (شمسی)</label>
                   <input
-                    type="date"
-                    value={endDate}
-                    onChange={e=>setEndDate(e.target.value)}
+                    type="text"
+                    value={persianEndDate}
+                    onChange={e => {
+                      const value = e.target.value.replace(/[^0-9/]/g, '')
+                      setPersianEndDate(value)
+                    }}
+                    placeholder="1403/01/15"
+                    pattern="\d{4}/\d{1,2}/\d{1,2}"
                     className="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:border-blue-500 focus:outline-none"
+                    dir="ltr"
                   />
+                  <p className="text-xs text-gray-500 mt-1">فرمت: سال/ماه/روز</p>
                 </div>
                 <div>
                   <label className="block text-sm text-gray-300 mb-2">وضعیت</label>

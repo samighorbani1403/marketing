@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import moment from 'moment-jalaali'
 
 export default function AdminNewEmployeePage() {
   const router = useRouter()
@@ -10,10 +11,13 @@ export default function AdminNewEmployeePage() {
   const [fullName, setFullName] = useState('')
   const [education, setEducation] = useState('')
   const [birthDate, setBirthDate] = useState('')
+  const [persianBirthDate, setPersianBirthDate] = useState('')
   const [fatherName, setFatherName] = useState('')
   const [nationalId, setNationalId] = useState('')
   const [interviewDate, setInterviewDate] = useState('')
+  const [persianInterviewDate, setPersianInterviewDate] = useState('')
   const [hireDate, setHireDate] = useState('')
+  const [persianHireDate, setPersianHireDate] = useState('')
   const [phone, setPhone] = useState('')
   const [address, setAddress] = useState('')
   const [employeeNumber, setEmployeeNumber] = useState('')
@@ -27,6 +31,7 @@ export default function AdminNewEmployeePage() {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [terminationDate, setTerminationDate] = useState('')
+  const [persianTerminationDate, setPersianTerminationDate] = useState('')
   const [terminationReason, setTerminationReason] = useState('')
   const [photoFile, setPhotoFile] = useState<File | null>(null)
   const [photoPreview, setPhotoPreview] = useState<string>('')
@@ -116,11 +121,58 @@ export default function AdminNewEmployeePage() {
     }
   }
 
+  const convertPersianDateToGregorian = (persianDateStr: string): string | null => {
+    if (!persianDateStr) return null
+    try {
+      const dateParts = persianDateStr.split('/')
+      if (dateParts.length !== 3) {
+        return null
+      }
+      
+      const jYear = parseInt(dateParts[0])
+      const jMonth = parseInt(dateParts[1])
+      const jDay = parseInt(dateParts[2])
+      
+      if (isNaN(jYear) || isNaN(jMonth) || isNaN(jDay)) {
+        return null
+      }
+      
+      const m = moment(`${jYear}/${jMonth}/${jDay}`, 'jYYYY/jMM/jDD')
+      if (!m.isValid()) {
+        return null
+      }
+      
+      return m.format('YYYY-MM-DD')
+    } catch {
+      return null
+    }
+  }
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
     
     if (!fullName.trim()) {
       return alert('نام و نام خانوادگی الزامی است')
+    }
+
+    // Convert Persian dates to Gregorian
+    const gregorianBirthDate = persianBirthDate ? convertPersianDateToGregorian(persianBirthDate) : null
+    const gregorianInterviewDate = persianInterviewDate ? convertPersianDateToGregorian(persianInterviewDate) : null
+    const gregorianHireDate = persianHireDate ? convertPersianDateToGregorian(persianHireDate) : null
+    const gregorianTerminationDate = persianTerminationDate ? convertPersianDateToGregorian(persianTerminationDate) : null
+
+    // Validate dates if provided
+    if (persianBirthDate && !gregorianBirthDate) {
+      return alert('فرمت تاریخ تولد صحیح نیست. لطفاً به فرمت 1403/01/15 وارد کنید')
+    }
+    if (persianInterviewDate && !gregorianInterviewDate) {
+      return alert('فرمت تاریخ مصاحبه صحیح نیست. لطفاً به فرمت 1403/01/15 وارد کنید')
+    }
+    if (persianHireDate && !gregorianHireDate) {
+      return alert('فرمت تاریخ استخدام صحیح نیست. لطفاً به فرمت 1403/01/15 وارد کنید')
+    }
+    if (persianTerminationDate && !gregorianTerminationDate) {
+      return alert('فرمت تاریخ قطع همکاری صحیح نیست. لطفاً به فرمت 1403/01/15 وارد کنید')
     }
 
     setSaving(true)
@@ -131,11 +183,11 @@ export default function AdminNewEmployeePage() {
         body: JSON.stringify({
           fullName,
           education: education.trim() || null,
-          birthDate: birthDate || null,
+          birthDate: gregorianBirthDate,
           fatherName: fatherName.trim() || null,
           nationalId: nationalId.trim() || null,
-          interviewDate: interviewDate || null,
-          hireDate: hireDate || null,
+          interviewDate: gregorianInterviewDate,
+          hireDate: gregorianHireDate,
           phone: phone.trim() || null,
           address: address.trim() || null,
           employeeNumber: employeeNumber.trim() || null,
@@ -149,7 +201,7 @@ export default function AdminNewEmployeePage() {
           employeeRank: employeeRank.trim() || null,
           username: username.trim() || null,
           password: password.trim() || null,
-          terminationDate: terminationDate || null,
+          terminationDate: gregorianTerminationDate,
           terminationReason: terminationReason.trim() || null
         })
       })
@@ -250,13 +302,20 @@ export default function AdminNewEmployeePage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-gray-300 mb-2">تاریخ تولد</label>
+                    <label className="block text-sm text-gray-300 mb-2">تاریخ تولد (شمسی)</label>
                     <input
-                      type="date"
-                      value={birthDate}
-                      onChange={e=>setBirthDate(e.target.value)}
+                      type="text"
+                      value={persianBirthDate}
+                      onChange={e => {
+                        const value = e.target.value.replace(/[^0-9/]/g, '')
+                        setPersianBirthDate(value)
+                      }}
+                      placeholder="1403/01/15"
+                      pattern="\d{4}/\d{1,2}/\d{1,2}"
                       className="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:border-blue-500 focus:outline-none"
+                      dir="ltr"
                     />
+                    <p className="text-xs text-gray-500 mt-1">فرمت: سال/ماه/روز (مثلاً: 1403/01/15)</p>
                   </div>
                   <div>
                     <label className="block text-sm text-gray-300 mb-2">میزان تحصیلات</label>
@@ -319,22 +378,36 @@ export default function AdminNewEmployeePage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-gray-300 mb-2">تاریخ مصاحبه</label>
+                    <label className="block text-sm text-gray-300 mb-2">تاریخ مصاحبه (شمسی)</label>
                     <input
-                      type="date"
-                      value={interviewDate}
-                      onChange={e=>setInterviewDate(e.target.value)}
+                      type="text"
+                      value={persianInterviewDate}
+                      onChange={e => {
+                        const value = e.target.value.replace(/[^0-9/]/g, '')
+                        setPersianInterviewDate(value)
+                      }}
+                      placeholder="1403/01/15"
+                      pattern="\d{4}/\d{1,2}/\d{1,2}"
                       className="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:border-blue-500 focus:outline-none"
+                      dir="ltr"
                     />
+                    <p className="text-xs text-gray-500 mt-1">فرمت: سال/ماه/روز</p>
                   </div>
                   <div>
-                    <label className="block text-sm text-gray-300 mb-2">تاریخ استخدام</label>
+                    <label className="block text-sm text-gray-300 mb-2">تاریخ استخدام (شمسی)</label>
                     <input
-                      type="date"
-                      value={hireDate}
-                      onChange={e=>setHireDate(e.target.value)}
+                      type="text"
+                      value={persianHireDate}
+                      onChange={e => {
+                        const value = e.target.value.replace(/[^0-9/]/g, '')
+                        setPersianHireDate(value)
+                      }}
+                      placeholder="1403/01/15"
+                      pattern="\d{4}/\d{1,2}/\d{1,2}"
                       className="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:border-blue-500 focus:outline-none"
+                      dir="ltr"
                     />
+                    <p className="text-xs text-gray-500 mt-1">فرمت: سال/ماه/روز</p>
                   </div>
                   <div>
                     <label className="block text-sm text-gray-300 mb-2">سمت شغلی</label>
@@ -442,13 +515,20 @@ export default function AdminNewEmployeePage() {
                 <h2 className="text-xl text-white font-semibold mb-4">اطلاعات قطع همکاری</h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm text-gray-300 mb-2">تاریخ قطع همکاری</label>
+                    <label className="block text-sm text-gray-300 mb-2">تاریخ قطع همکاری (شمسی)</label>
                     <input
-                      type="date"
-                      value={terminationDate}
-                      onChange={e=>setTerminationDate(e.target.value)}
+                      type="text"
+                      value={persianTerminationDate}
+                      onChange={e => {
+                        const value = e.target.value.replace(/[^0-9/]/g, '')
+                        setPersianTerminationDate(value)
+                      }}
+                      placeholder="1403/01/15"
+                      pattern="\d{4}/\d{1,2}/\d{1,2}"
                       className="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:border-blue-500 focus:outline-none"
+                      dir="ltr"
                     />
+                    <p className="text-xs text-gray-500 mt-1">فرمت: سال/ماه/روز</p>
                   </div>
                   <div className="md:col-span-2">
                     <label className="block text-sm text-gray-300 mb-2">دلیل قطع همکاری</label>

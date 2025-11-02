@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import AdminSidebar from '@/components/AdminSidebar'
+import moment from 'moment-jalaali'
 
 interface Expense {
   id: string
@@ -20,6 +21,7 @@ export default function AdminExpensesPage() {
   // Form fields
   const [title, setTitle] = useState('')
   const [expenseDate, setExpenseDate] = useState('')
+  const [persianExpenseDate, setPersianExpenseDate] = useState('')
   const [amount, setAmount] = useState('')
   const [paidBy, setPaidBy] = useState('')
 
@@ -52,13 +54,43 @@ export default function AdminExpensesPage() {
       return
     }
 
-    if (!expenseDate) {
+    if (!persianExpenseDate) {
       alert('لطفاً تاریخ هزینه را وارد کنید')
       return
     }
 
     if (!amount || parseFloat(amount) <= 0) {
       alert('لطفاً مبلغ هزینه را وارد کنید')
+      return
+    }
+
+    // Convert Persian date to Gregorian
+    let gregorianExpenseDate: string
+    try {
+      const dateParts = persianExpenseDate.split('/')
+      if (dateParts.length !== 3) {
+        alert('فرمت تاریخ صحیح نیست. لطفاً به فرمت 1403/01/15 وارد کنید')
+        return
+      }
+      
+      const jYear = parseInt(dateParts[0])
+      const jMonth = parseInt(dateParts[1])
+      const jDay = parseInt(dateParts[2])
+      
+      if (isNaN(jYear) || isNaN(jMonth) || isNaN(jDay)) {
+        alert('لطفاً تاریخ را به درستی وارد کنید')
+        return
+      }
+      
+      const m = moment(`${jYear}/${jMonth}/${jDay}`, 'jYYYY/jMM/jDD')
+      if (!m.isValid()) {
+        alert('تاریخ وارد شده معتبر نیست')
+        return
+      }
+      
+      gregorianExpenseDate = m.format('YYYY-MM-DD')
+    } catch (error) {
+      alert('خطا در تبدیل تاریخ. لطفاً تاریخ را به فرمت 1403/01/15 وارد کنید')
       return
     }
 
@@ -69,7 +101,7 @@ export default function AdminExpensesPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: title.trim(),
-          expenseDate,
+          expenseDate: gregorianExpenseDate,
           amount,
           paidBy: paidBy.trim() || null
         })
@@ -82,6 +114,7 @@ export default function AdminExpensesPage() {
           // Reset form
           setTitle('')
           setExpenseDate('')
+          setPersianExpenseDate('')
           setAmount('')
           setPaidBy('')
           fetchExpenses()
@@ -101,7 +134,15 @@ export default function AdminExpensesPage() {
   }
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('fa-IR')
+    try {
+      const m = moment(dateString, 'YYYY-MM-DD')
+      if (m.isValid()) {
+        return m.format('jYYYY/jMM/jDD')
+      }
+      return new Date(dateString).toLocaleDateString('fa-IR')
+    } catch {
+      return new Date(dateString).toLocaleDateString('fa-IR')
+    }
   }
 
   const formatCurrency = (amount: number) => {
@@ -142,14 +183,21 @@ export default function AdminExpensesPage() {
                   </div>
 
                   <div>
-                    <label className="block text-sm text-gray-300 mb-2">تاریخ هزینه <span className="text-red-400">*</span></label>
+                    <label className="block text-sm text-gray-300 mb-2">تاریخ هزینه (شمسی) <span className="text-red-400">*</span></label>
                     <input
-                      type="date"
-                      value={expenseDate}
-                      onChange={e => setExpenseDate(e.target.value)}
+                      type="text"
+                      value={persianExpenseDate}
+                      onChange={e => {
+                        const value = e.target.value.replace(/[^0-9/]/g, '')
+                        setPersianExpenseDate(value)
+                      }}
+                      placeholder="1403/01/15"
+                      pattern="\d{4}/\d{1,2}/\d{1,2}"
                       required
                       className="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:border-blue-500 focus:outline-none"
+                      dir="ltr"
                     />
+                    <p className="text-xs text-gray-500 mt-1">فرمت: سال/ماه/روز (مثلاً: 1403/01/15)</p>
                   </div>
 
                   <div>

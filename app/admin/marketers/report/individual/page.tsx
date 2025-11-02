@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import AdminSidebar from '@/components/AdminSidebar'
+import moment from 'moment-jalaali'
 
 interface Performance {
   id: string
@@ -29,6 +30,51 @@ export default function IndividualReportPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [selectedMarketer, setSelectedMarketer] = useState('')
   const [filterPeriod, setFilterPeriod] = useState('')
+  const [persianPeriod, setPersianPeriod] = useState('')
+
+  const convertPersianMonthToGregorian = (persianMonthStr: string): string => {
+    try {
+      const parts = persianMonthStr.split('/')
+      if (parts.length !== 2) {
+        return ''
+      }
+      
+      const jYear = parseInt(parts[0])
+      const jMonth = parseInt(parts[1])
+      
+      if (isNaN(jYear) || isNaN(jMonth) || jMonth < 1 || jMonth > 12) {
+        return ''
+      }
+      
+      // Create a date in the middle of the Persian month and convert to Gregorian
+      const m = moment(`${jYear}/${jMonth}/15`, 'jYYYY/jMM/jDD')
+      if (!m.isValid()) {
+        return ''
+      }
+      
+      const gYear = m.year()
+      const gMonth = String(m.month() + 1).padStart(2, '0')
+      return `${gYear}-${gMonth}`
+    } catch {
+      return ''
+    }
+  }
+
+  const handlePeriodChange = (value: string) => {
+    const filtered = value.replace(/[^0-9/]/g, '')
+    setPersianPeriod(filtered)
+    
+    if (filtered.includes('/') && filtered.split('/').length === 2) {
+      const gregorian = convertPersianMonthToGregorian(filtered)
+      if (gregorian) {
+        setFilterPeriod(gregorian)
+      } else {
+        setFilterPeriod('')
+      }
+    } else {
+      setFilterPeriod('')
+    }
+  }
 
   useEffect(() => {
     if (selectedMarketer) {
@@ -102,13 +148,17 @@ export default function IndividualReportPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-300 mb-2">فیلتر دوره</label>
+                  <label className="block text-sm text-gray-300 mb-2">فیلتر دوره (شمسی)</label>
                   <input
-                    type="month"
-                    value={filterPeriod}
-                    onChange={e => setFilterPeriod(e.target.value)}
+                    type="text"
+                    value={persianPeriod}
+                    onChange={e => handlePeriodChange(e.target.value)}
+                    placeholder="1403/01"
+                    pattern="\d{4}/\d{1,2}"
                     className="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:border-blue-500 focus:outline-none"
+                    dir="ltr"
                   />
+                  <p className="text-xs text-gray-500 mt-1">فرمت: سال/ماه (مثلاً: 1403/01)</p>
                 </div>
               </div>
             </div>

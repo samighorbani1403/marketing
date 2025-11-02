@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import AdminSidebar from '@/components/AdminSidebar'
+import moment from 'moment-jalaali'
 
 interface Employee {
   id: string
@@ -35,7 +36,9 @@ export default function AdminSalaryPage() {
   const [employeeId, setEmployeeId] = useState('')
   const [paymentPeriod, setPaymentPeriod] = useState('monthly')
   const [month, setMonth] = useState('')
+  const [persianMonth, setPersianMonth] = useState('')
   const [paymentDate, setPaymentDate] = useState('')
+  const [persianPaymentDate, setPersianPaymentDate] = useState('')
   const [deductions, setDeductions] = useState('')
   const [leaveDays, setLeaveDays] = useState('')
   const [employeeRank, setEmployeeRank] = useState('')
@@ -91,7 +94,7 @@ export default function AdminSalaryPage() {
       return
     }
 
-    if (!paymentDate) {
+    if (!persianPaymentDate) {
       alert('لطفاً تاریخ پرداخت را وارد کنید')
       return
     }
@@ -99,6 +102,59 @@ export default function AdminSalaryPage() {
     if (!amount || parseFloat(amount) <= 0) {
       alert('لطفاً مبلغ پرداخت را وارد کنید')
       return
+    }
+
+    // Convert Persian payment date to Gregorian
+    let gregorianPaymentDate: string
+    try {
+      const dateParts = persianPaymentDate.split('/')
+      if (dateParts.length !== 3) {
+        alert('فرمت تاریخ پرداخت صحیح نیست. لطفاً به فرمت 1403/01/15 وارد کنید')
+        return
+      }
+      
+      const jYear = parseInt(dateParts[0])
+      const jMonth = parseInt(dateParts[1])
+      const jDay = parseInt(dateParts[2])
+      
+      if (isNaN(jYear) || isNaN(jMonth) || isNaN(jDay)) {
+        alert('لطفاً تاریخ پرداخت را به درستی وارد کنید')
+        return
+      }
+      
+      const m = moment(`${jYear}/${jMonth}/${jDay}`, 'jYYYY/jMM/jDD')
+      if (!m.isValid()) {
+        alert('تاریخ پرداخت وارد شده معتبر نیست')
+        return
+      }
+      
+      gregorianPaymentDate = m.format('YYYY-MM-DD')
+    } catch (error) {
+      alert('خطا در تبدیل تاریخ پرداخت. لطفاً تاریخ را به فرمت 1403/01/15 وارد کنید')
+      return
+    }
+
+    // Convert Persian month to Gregorian (if provided)
+    let gregorianMonth: string | null = null
+    if (persianMonth) {
+      try {
+        const parts = persianMonth.split('/')
+        if (parts.length === 2) {
+          const jYear = parseInt(parts[0])
+          const jMonth = parseInt(parts[1])
+          
+          if (!isNaN(jYear) && !isNaN(jMonth) && jMonth >= 1 && jMonth <= 12) {
+            const m = moment(`${jYear}/${jMonth}/15`, 'jYYYY/jMM/jDD')
+            if (m.isValid()) {
+              const gYear = m.year()
+              const gMonth = String(m.month() + 1).padStart(2, '0')
+              gregorianMonth = `${gYear}-${gMonth}`
+            }
+          }
+        }
+      } catch {
+        // Ignore month conversion errors
+      }
     }
 
     setIsSaving(true)
@@ -110,8 +166,8 @@ export default function AdminSalaryPage() {
           employeeId,
           employeeName: selectedEmployee.fullName,
           paymentPeriod,
-          month: month || null,
-          paymentDate,
+          month: gregorianMonth,
+          paymentDate: gregorianPaymentDate,
           deductions: deductions || 0,
           leaveDays: leaveDays || 0,
           employeeRank: employeeRank || selectedEmployee.employeeRank || null,
@@ -126,7 +182,9 @@ export default function AdminSalaryPage() {
           // Reset form
           setEmployeeId('')
           setMonth('')
+          setPersianMonth('')
           setPaymentDate('')
+          setPersianPaymentDate('')
           setDeductions('')
           setLeaveDays('')
           setEmployeeRank('')
@@ -148,7 +206,34 @@ export default function AdminSalaryPage() {
   }
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('fa-IR')
+    try {
+      const m = moment(dateString, 'YYYY-MM-DD')
+      if (m.isValid()) {
+        return m.format('jYYYY/jMM/jDD')
+      }
+      return new Date(dateString).toLocaleDateString('fa-IR')
+    } catch {
+      return new Date(dateString).toLocaleDateString('fa-IR')
+    }
+  }
+
+  const formatPeriod = (periodStr?: string) => {
+    if (!periodStr) return '-'
+    try {
+      // Check if it's in Gregorian format (YYYY-MM)
+      if (periodStr.match(/^\d{4}-\d{2}$/)) {
+        const parts = periodStr.split('-')
+        const year = parseInt(parts[0])
+        const month = parseInt(parts[1])
+        const m = moment(`${year}-${month}-15`, 'YYYY-MM-DD')
+        if (m.isValid()) {
+          return m.format('jYYYY/jMM')
+        }
+      }
+      return periodStr
+    } catch {
+      return periodStr
+    }
   }
 
   const formatCurrency = (amount: number) => {
@@ -205,24 +290,38 @@ export default function AdminSalaryPage() {
                   </div>
 
                   <div>
-                    <label className="block text-sm text-gray-300 mb-2">انتخاب ماه</label>
+                    <label className="block text-sm text-gray-300 mb-2">انتخاب ماه (شمسی)</label>
                     <input
-                      type="month"
-                      value={month}
-                      onChange={e => setMonth(e.target.value)}
+                      type="text"
+                      value={persianMonth}
+                      onChange={e => {
+                        const value = e.target.value.replace(/[^0-9/]/g, '')
+                        setPersianMonth(value)
+                      }}
+                      placeholder="1403/01"
+                      pattern="\d{4}/\d{1,2}"
                       className="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:border-blue-500 focus:outline-none"
+                      dir="ltr"
                     />
+                    <p className="text-xs text-gray-500 mt-1">فرمت: سال/ماه (مثلاً: 1403/01)</p>
                   </div>
 
                   <div>
-                    <label className="block text-sm text-gray-300 mb-2">تاریخ پرداخت <span className="text-red-400">*</span></label>
+                    <label className="block text-sm text-gray-300 mb-2">تاریخ پرداخت (شمسی) <span className="text-red-400">*</span></label>
                     <input
-                      type="date"
-                      value={paymentDate}
-                      onChange={e => setPaymentDate(e.target.value)}
+                      type="text"
+                      value={persianPaymentDate}
+                      onChange={e => {
+                        const value = e.target.value.replace(/[^0-9/]/g, '')
+                        setPersianPaymentDate(value)
+                      }}
+                      placeholder="1403/01/15"
+                      pattern="\d{4}/\d{1,2}/\d{1,2}"
                       required
                       className="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:border-blue-500 focus:outline-none"
+                      dir="ltr"
                     />
+                    <p className="text-xs text-gray-500 mt-1">فرمت: سال/ماه/روز (مثلاً: 1403/01/15)</p>
                   </div>
 
                   <div>
@@ -330,7 +429,7 @@ export default function AdminSalaryPage() {
                              payment.paymentPeriod === 'weekly' ? 'هفتگی' :
                              payment.paymentPeriod === 'biweekly' ? 'دو هفته‌ای' : 'روزانه'}
                           </td>
-                          <td className="px-4 py-3 text-gray-300">{payment.month || '—'}</td>
+                          <td className="px-4 py-3 text-gray-300">{payment.month ? formatPeriod(payment.month) : '—'}</td>
                           <td className="px-4 py-3 text-gray-300">{formatDate(payment.paymentDate)}</td>
                           <td className="px-4 py-3 text-gray-300">{formatCurrency(payment.deductions)}</td>
                           <td className="px-4 py-3 text-gray-300">{payment.leaveDays} روز</td>

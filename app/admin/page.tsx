@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import AdminSidebar from '@/components/AdminSidebar'
 import {
@@ -43,6 +44,7 @@ interface DashboardStats {
 }
 
 export default function AdminDashboard() {
+  const router = useRouter()
   const [stats, setStats] = useState<DashboardStats>({
     totalEmployees: 0,
     totalProjects: 0,
@@ -283,17 +285,50 @@ export default function AdminDashboard() {
     }
   }
 
+  const handleLogout = async () => {
+    if (confirm('آیا مطمئن هستید که می‌خواهید خارج شوید؟')) {
+      try {
+        await fetch('/api/auth/logout', { method: 'POST' })
+        router.push('/login')
+      } catch (error) {
+        router.push('/login')
+      }
+    }
+  }
+
   return (
     <div className="h-screen bg-gradient-to-br from-gray-900 via-black to-gray-800 flex overflow-hidden" dir="rtl">
       <AdminSidebar />
       <main className="flex-1 overflow-y-auto">
         {/* Header */}
         <header className="bg-gray-900/80 backdrop-blur-xl border-b border-gray-700/50 shadow-2xl sticky top-0 z-10">
-          <div className="px-6 py-4">
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
-              داشبورد مدیریت
-            </h1>
-            <p className="text-gray-400 mt-1">نمای کلی از تمام بخش‌های سیستم</p>
+          <div className="px-6 py-4 flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
+                داشبورد مدیریت
+              </h1>
+              <p className="text-gray-400 mt-1">نمای کلی از تمام بخش‌های سیستم</p>
+            </div>
+            <div className="flex items-center gap-3">
+              <Link
+                href="/admin/profile"
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-all duration-200 font-medium"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                </svg>
+                پروفایل
+              </Link>
+              <button
+                onClick={handleLogout}
+                className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-all duration-200 font-medium"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
+                خروج
+              </button>
+            </div>
           </div>
         </header>
 

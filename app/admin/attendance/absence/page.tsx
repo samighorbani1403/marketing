@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import AdminSidebar from '@/components/AdminSidebar'
+import moment from 'moment-jalaali'
 
 interface Absence {
   id: string
@@ -21,7 +22,7 @@ export default function AbsencePage() {
   // Form fields
   const [employeeId, setEmployeeId] = useState('')
   const [employeeName, setEmployeeName] = useState('')
-  const [date, setDate] = useState('')
+  const [persianDate, setPersianDate] = useState('')
   const [reason, setReason] = useState('justified')
   const [notes, setNotes] = useState('')
 
@@ -49,8 +50,39 @@ export default function AbsencePage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!employeeName.trim() || !date || !reason) {
+    if (!employeeName.trim() || !persianDate || !reason) {
       alert('لطفاً نام کارمند، تاریخ و دلیل غیبت را وارد کنید')
+      return
+    }
+
+    // Convert Persian date to Gregorian
+    let gregorianDate: string
+    try {
+      // Parse Persian date (format: YYYY/MM/DD)
+      const dateParts = persianDate.split('/')
+      if (dateParts.length !== 3) {
+        alert('فرمت تاریخ صحیح نیست. لطفاً به فرمت 1403/01/15 وارد کنید')
+        return
+      }
+      
+      const jYear = parseInt(dateParts[0])
+      const jMonth = parseInt(dateParts[1])
+      const jDay = parseInt(dateParts[2])
+      
+      if (isNaN(jYear) || isNaN(jMonth) || isNaN(jDay)) {
+        alert('لطفاً تاریخ را به درستی وارد کنید')
+        return
+      }
+      
+      const m = moment(`${jYear}/${jMonth}/${jDay}`, 'jYYYY/jMM/jDD')
+      if (!m.isValid()) {
+        alert('تاریخ وارد شده معتبر نیست')
+        return
+      }
+      
+      gregorianDate = m.format('YYYY-MM-DD')
+    } catch (error) {
+      alert('خطا در تبدیل تاریخ. لطفاً تاریخ را به فرمت 1403/01/15 وارد کنید')
       return
     }
 
@@ -62,7 +94,7 @@ export default function AbsencePage() {
         body: JSON.stringify({
           employeeId: employeeId || null,
           employeeName,
-          date,
+          date: gregorianDate,
           reason,
           notes: notes || null
         })
@@ -75,7 +107,7 @@ export default function AbsencePage() {
           // Reset form
           setEmployeeId('')
           setEmployeeName('')
-          setDate('')
+          setPersianDate('')
           setReason('justified')
           setNotes('')
           fetchAbsences()
@@ -95,7 +127,15 @@ export default function AbsencePage() {
   }
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('fa-IR')
+    try {
+      const m = moment(dateString, 'YYYY-MM-DD')
+      if (m.isValid()) {
+        return m.format('jYYYY/jMM/jDD')
+      }
+      return new Date(dateString).toLocaleDateString('fa-IR')
+    } catch {
+      return new Date(dateString).toLocaleDateString('fa-IR')
+    }
   }
 
   const getReasonLabel = (reason: string) => {
@@ -156,14 +196,21 @@ export default function AbsencePage() {
                   </div>
 
                   <div>
-                    <label className="block text-sm text-gray-300 mb-2">تاریخ غیبت <span className="text-red-400">*</span></label>
+                    <label className="block text-sm text-gray-300 mb-2">تاریخ غیبت (شمسی) <span className="text-red-400">*</span></label>
                     <input
-                      type="date"
-                      value={date}
-                      onChange={e => setDate(e.target.value)}
+                      type="text"
+                      value={persianDate}
+                      onChange={e => {
+                        const value = e.target.value.replace(/[^0-9/]/g, '')
+                        setPersianDate(value)
+                      }}
+                      placeholder="1403/01/15"
+                      pattern="\d{4}/\d{1,2}/\d{1,2}"
                       required
                       className="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:border-blue-500 focus:outline-none"
+                      dir="ltr"
                     />
+                    <p className="text-xs text-gray-500 mt-1">فرمت: سال/ماه/روز (مثلاً: 1403/01/15)</p>
                   </div>
 
                   <div className="md:col-span-2">

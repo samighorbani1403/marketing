@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import AdminSidebar from '@/components/AdminSidebar'
+import moment from 'moment-jalaali'
 
 interface Share {
   id: string
@@ -27,7 +28,9 @@ export default function MarketersSharesPage() {
   const [shareAmount, setShareAmount] = useState('')
   const [sharePercentage, setSharePercentage] = useState('')
   const [period, setPeriod] = useState('')
+  const [persianPeriod, setPersianPeriod] = useState('')
   const [paymentDate, setPaymentDate] = useState('')
+  const [persianPaymentDate, setPersianPaymentDate] = useState('')
   const [paymentStatus, setPaymentStatus] = useState('pending')
   const [notes, setNotes] = useState('')
 
@@ -60,9 +63,62 @@ export default function MarketersSharesPage() {
       return
     }
 
-    if (!paymentDate) {
+    if (!persianPaymentDate) {
       alert('لطفاً تاریخ پرداخت را وارد کنید')
       return
+    }
+
+    // Convert Persian payment date to Gregorian
+    let gregorianPaymentDate: string
+    try {
+      const dateParts = persianPaymentDate.split('/')
+      if (dateParts.length !== 3) {
+        alert('فرمت تاریخ پرداخت صحیح نیست. لطفاً به فرمت 1403/01/15 وارد کنید')
+        return
+      }
+      
+      const jYear = parseInt(dateParts[0])
+      const jMonth = parseInt(dateParts[1])
+      const jDay = parseInt(dateParts[2])
+      
+      if (isNaN(jYear) || isNaN(jMonth) || isNaN(jDay)) {
+        alert('لطفاً تاریخ پرداخت را به درستی وارد کنید')
+        return
+      }
+      
+      const m = moment(`${jYear}/${jMonth}/${jDay}`, 'jYYYY/jMM/jDD')
+      if (!m.isValid()) {
+        alert('تاریخ پرداخت وارد شده معتبر نیست')
+        return
+      }
+      
+      gregorianPaymentDate = m.format('YYYY-MM-DD')
+    } catch (error) {
+      alert('خطا در تبدیل تاریخ پرداخت. لطفاً تاریخ را به فرمت 1403/01/15 وارد کنید')
+      return
+    }
+
+    // Convert Persian period to Gregorian (if provided)
+    let gregorianPeriod: string | null = null
+    if (persianPeriod) {
+      try {
+        const parts = persianPeriod.split('/')
+        if (parts.length === 2) {
+          const jYear = parseInt(parts[0])
+          const jMonth = parseInt(parts[1])
+          
+          if (!isNaN(jYear) && !isNaN(jMonth) && jMonth >= 1 && jMonth <= 12) {
+            const m = moment(`${jYear}/${jMonth}/15`, 'jYYYY/jMM/jDD')
+            if (m.isValid()) {
+              const gYear = m.year()
+              const gMonth = String(m.month() + 1).padStart(2, '0')
+              gregorianPeriod = `${gYear}-${gMonth}`
+            }
+          }
+        }
+      } catch {
+        // Ignore period conversion errors
+      }
     }
 
     setIsSaving(true)
@@ -75,8 +131,8 @@ export default function MarketersSharesPage() {
           marketerName,
           shareAmount,
           sharePercentage: sharePercentage || null,
-          period: period || null,
-          paymentDate,
+          period: gregorianPeriod,
+          paymentDate: gregorianPaymentDate,
           paymentStatus,
           notes: notes || null
         })
@@ -92,7 +148,9 @@ export default function MarketersSharesPage() {
           setShareAmount('')
           setSharePercentage('')
           setPeriod('')
+          setPersianPeriod('')
           setPaymentDate('')
+          setPersianPaymentDate('')
           setPaymentStatus('pending')
           setNotes('')
           fetchShares()
@@ -116,7 +174,34 @@ export default function MarketersSharesPage() {
   }
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('fa-IR')
+    try {
+      const m = moment(dateString, 'YYYY-MM-DD')
+      if (m.isValid()) {
+        return m.format('jYYYY/jMM/jDD')
+      }
+      return new Date(dateString).toLocaleDateString('fa-IR')
+    } catch {
+      return new Date(dateString).toLocaleDateString('fa-IR')
+    }
+  }
+
+  const formatPeriod = (periodStr?: string) => {
+    if (!periodStr) return '-'
+    try {
+      // Check if it's in Gregorian format (YYYY-MM)
+      if (periodStr.match(/^\d{4}-\d{2}$/)) {
+        const parts = periodStr.split('-')
+        const year = parseInt(parts[0])
+        const month = parseInt(parts[1])
+        const m = moment(`${year}-${month}-15`, 'YYYY-MM-DD')
+        if (m.isValid()) {
+          return m.format('jYYYY/jMM')
+        }
+      }
+      return periodStr
+    } catch {
+      return periodStr
+    }
   }
 
   const getStatusBadge = (status: string) => {
@@ -187,24 +272,38 @@ export default function MarketersSharesPage() {
                   </div>
 
                   <div>
-                    <label className="block text-sm text-gray-300 mb-2">دوره (ماه/سال)</label>
+                    <label className="block text-sm text-gray-300 mb-2">دوره (شمسی)</label>
                     <input
-                      type="month"
-                      value={period}
-                      onChange={e => setPeriod(e.target.value)}
+                      type="text"
+                      value={persianPeriod}
+                      onChange={e => {
+                        const value = e.target.value.replace(/[^0-9/]/g, '')
+                        setPersianPeriod(value)
+                      }}
+                      placeholder="1403/01"
+                      pattern="\d{4}/\d{1,2}"
                       className="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:border-blue-500 focus:outline-none"
+                      dir="ltr"
                     />
+                    <p className="text-xs text-gray-500 mt-1">فرمت: سال/ماه (مثلاً: 1403/01)</p>
                   </div>
 
                   <div>
-                    <label className="block text-sm text-gray-300 mb-2">تاریخ پرداخت <span className="text-red-400">*</span></label>
+                    <label className="block text-sm text-gray-300 mb-2">تاریخ پرداخت (شمسی) <span className="text-red-400">*</span></label>
                     <input
-                      type="date"
-                      value={paymentDate}
-                      onChange={e => setPaymentDate(e.target.value)}
+                      type="text"
+                      value={persianPaymentDate}
+                      onChange={e => {
+                        const value = e.target.value.replace(/[^0-9/]/g, '')
+                        setPersianPaymentDate(value)
+                      }}
+                      placeholder="1403/01/15"
+                      pattern="\d{4}/\d{1,2}/\d{1,2}"
                       required
                       className="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:border-blue-500 focus:outline-none"
+                      dir="ltr"
                     />
+                    <p className="text-xs text-gray-500 mt-1">فرمت: سال/ماه/روز (مثلاً: 1403/01/15)</p>
                   </div>
 
                   <div>
@@ -273,7 +372,7 @@ export default function MarketersSharesPage() {
                           <div className="flex items-center gap-4 text-sm text-gray-300">
                             <span>مبلغ: <span className="text-green-400 font-semibold">{formatCurrency(share.shareAmount)} تومان</span></span>
                             {share.sharePercentage && <span>درصد: {share.sharePercentage}%</span>}
-                            {share.period && <span>دوره: {share.period}</span>}
+                            {share.period && <span>دوره: {formatPeriod(share.period)}</span>}
                             <span>تاریخ: {formatDate(share.paymentDate)}</span>
                           </div>
                         </div>
