@@ -43,109 +43,189 @@ interface Feedback {
 }
 
 export default function ConversationsPage() {
-  const [activeTab, setActiveTab] = useState<'upload' | 'list' | 'chat' | 'feedback'>('upload')
-  const [title, setTitle] = useState('')
-  const [file, setFile] = useState<File | null>(null)
-  const [recipientId, setRecipientId] = useState('')
-  const [isSending, setIsSending] = useState(false)
-
-  const [conversations, setConversations] = useState<Conversation[]>([])
-  const [isLoadingConvs, setIsLoadingConvs] = useState(true)
-
-  const [messages, setMessages] = useState<Message[]>([])
-  const [newMessage, setNewMessage] = useState('')
-  const [sendingMsg, setSendingMsg] = useState(false)
+  const [activeTab, setActiveTab] = useState<'employees' | 'feedback'>('employees')
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('')
+  const [employeeMessages, setEmployeeMessages] = useState<Message[]>([])
+  const [employeeInput, setEmployeeInput] = useState('')
+  const [sendingEmployeeMsg, setSendingEmployeeMsg] = useState(false)
+  const [employeeAttachment, setEmployeeAttachment] = useState<File | null>(null)
+  const [employeeAttachmentPreview, setEmployeeAttachmentPreview] = useState<string>('')
+  const employeeFileInputRef = useRef<HTMLInputElement>(null)
 
   const [feedbacks, setFeedbacks] = useState<Feedback[]>([])
   const [feedbackText, setFeedbackText] = useState('')
   const [sendingFeedback, setSendingFeedback] = useState(false)
 
-  const [directMessages, setDirectMessages] = useState<Message[]>([])
-  const [directInput, setDirectInput] = useState('')
-  const [sendingDirect, setSendingDirect] = useState(false)
-
-  const [groupAttachment, setGroupAttachment] = useState<File | null>(null)
-  const [groupAttachmentPreview, setGroupAttachmentPreview] = useState<string>('')
-
-  const dropRef = useRef<HTMLDivElement>(null)
-  const chatListRef = useRef<HTMLDivElement>(null)
-  const chatEndRef = useRef<HTMLDivElement>(null)
   const directEndRef = useRef<HTMLDivElement>(null)
-  const groupFileInputRef = useRef<HTMLInputElement>(null)
 
-  const currentUser = { id: '2', name: 'سامی قربانی' }
-  const recipients = [
-    { id: '1', name: 'مدیر سیستم' },
-    { id: '2', name: 'سامی قربانی' },
-    { id: '3', name: 'کارمند ۳' },
-  ]
-  const userMap: Record<string, string> = {
-    '1': 'مدیر سیستم',
-    '2': 'سامی قربانی',
-    '3': 'کارمند ۳',
-  }
+  const [currentUser, setCurrentUser] = useState<{ id: string, name: string }>({ id: '', name: '' })
+  const [recipients, setRecipients] = useState<Array<{ id: string, name: string }>>([])
+  const [isLoadingEmployees, setIsLoadingEmployees] = useState(true)
+  
+  // Build userMap from recipients
+  const userMap: Record<string, string> = recipients.reduce((acc, emp) => {
+    acc[emp.id] = emp.name
+    return acc
+  }, {} as Record<string, string>)
 
   useEffect(() => {
-    fetchConversations()
+    fetchCurrentUser()
+    fetchEmployees()
+    
+    // Request notification permission
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      if (Notification.permission === 'default') {
+        Notification.requestPermission().then(permission => {
+          console.log('Notification permission:', permission)
+        })
+      }
+    }
   }, [])
 
-  useEffect(() => {
-    fetchMessages()
-  }, [])
 
   useEffect(() => {
     fetchFeedbacks()
   }, [])
 
-  useEffect(() => {
-    if (activeTab === 'chat') {
-      chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-    }
-  }, [messages, activeTab])
-
-  useEffect(() => {
-    if (recipientId) {
-      fetch(`/api/conversations/messages/${recipientId}`)
-        .then(r => r.json())
-        .then(data => setDirectMessages((data.messages || []) as Message[]))
-        .catch(() => setDirectMessages([]))
-    } else {
-      setDirectMessages([])
-    }
-  }, [recipientId])
-
-  useEffect(() => {
-    directEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [directMessages])
-
-  const fetchConversations = async () => {
+  const fetchCurrentUser = async () => {
     try {
-      const res = await fetch('/api/conversations')
+      const res = await fetch('/api/auth/me')
+      if (res.ok) {
+        const userData = await res.json()
+        setCurrentUser({
+          id: userData.id || '',
+          name: userData.name || userData.username || 'کاربر'
+        })
+      }
+    } catch (error) {
+      console.error('Error fetching current user:', error)
+    }
+  }
+
+  const fetchEmployees = async () => {
+    setIsLoadingEmployees(true)
+    try {
+      const res = await fetch('/api/employees')
       if (res.ok) {
         const data = await res.json()
-        setConversations(data.conversations || [])
+        if (data.success && data.employees) {
+          const employeeList = data.employees.map((emp: any) => ({
+            id: emp.id,
+            name: emp.fullName || 'کارمند'
+          }))
+          setRecipients(employeeList)
+        }
       }
+    } catch (error) {
+      console.error('Error fetching employees:', error)
     } finally {
-      setIsLoadingConvs(false)
+      setIsLoadingEmployees(false)
     }
   }
 
-  const normalizeGroup = (list: Message[]): Message[] => {
-    return (list || []).map(m => ({
-      ...m,
-      userName: m.userName || (m.userId ? userMap[String(m.userId)] : undefined) || 'کاربر',
-    }))
+
+
+  const fetchEmployeeMessages = async () => {
+    if (selectedEmployeeId && currentUser.id) {
+      try {
+        const res = await fetch(`/api/conversations/messages/${selectedEmployeeId}?currentUserId=${currentUser.id}`)
+        if (res.ok) {
+          const data = await res.json()
+          setEmployeeMessages((data.messages || []) as Message[])
+        }
+      } catch (error) {
+        console.error('Error fetching messages:', error)
+        setEmployeeMessages([])
+      }
+    } else {
+      setEmployeeMessages([])
+    }
   }
 
-  const fetchMessages = async () => {
-    try {
-      const res = await fetch('/api/conversations/messages')
-      if (res.ok) {
-        const data = await res.json()
-        setMessages(normalizeGroup(data.messages || []))
+  useEffect(() => {
+    fetchEmployeeMessages()
+    
+    // Poll for new messages every 3 seconds
+    const interval = setInterval(() => {
+      if (selectedEmployeeId && currentUser.id) {
+        fetchEmployeeMessages()
       }
-    } catch {}
-  }
+    }, 3000)
+
+    return () => clearInterval(interval)
+  }, [selectedEmployeeId, currentUser.id])
+
+  useEffect(() => {
+    if (activeTab === 'employees' && selectedEmployeeId) {
+      // Scroll to bottom of employee chat
+      setTimeout(() => {
+        directEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+      }, 100)
+    }
+  }, [employeeMessages, activeTab, selectedEmployeeId])
+
+  // Check for new messages from other users (notifications)
+  useEffect(() => {
+    if (!currentUser.id) return
+
+    const checkForNewMessages = async () => {
+      try {
+        // Get all employees
+        const res = await fetch('/api/employees')
+        if (res.ok) {
+          const data = await res.json()
+          if (data.success && data.employees) {
+            // Check for new messages from each employee
+            for (const emp of data.employees) {
+              if (emp.id === currentUser.id) continue
+              
+              try {
+                const msgRes = await fetch(`/api/conversations/messages/${emp.id}?currentUserId=${currentUser.id}`)
+                if (msgRes.ok) {
+                  const msgData = await msgRes.json()
+                  const messages = msgData.messages || []
+                  // Get the most recent message in this conversation
+                  if (messages.length > 0) {
+                    const lastMessage = messages[messages.length - 1]
+                    // If last message is from the other person and we're not currently viewing this chat
+                    if (lastMessage.fromUserId !== currentUser.id && selectedEmployeeId !== emp.id) {
+                      // Show notification
+                      if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+                        const senderName = lastMessage.fromUserName || emp.fullName || 'کارمند'
+                        // Check if we already showed notification for this message
+                        const notificationKey = `msg_${lastMessage.id}`
+                        if (!localStorage.getItem(notificationKey)) {
+                          new Notification(`پیام جدید از ${senderName}`, {
+                            body: lastMessage.message || 'فایل دریافت شده',
+                            icon: '/favicon.ico',
+                            tag: `message_${emp.id}` // Group notifications from same sender
+                          })
+                          localStorage.setItem(notificationKey, 'true')
+                          // Clean old notification keys after 1 hour
+                          setTimeout(() => {
+                            localStorage.removeItem(notificationKey)
+                          }, 3600000)
+                        }
+                      }
+                    }
+                  }
+                }
+              } catch {}
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error checking for new messages:', error)
+      }
+    }
+
+    // Check every 5 seconds
+    const notificationInterval = setInterval(checkForNewMessages, 5000)
+    return () => clearInterval(notificationInterval)
+  }, [currentUser.id, selectedEmployeeId])
+
+
+
 
   const fetchFeedbacks = async () => {
     try {
@@ -176,62 +256,6 @@ export default function ConversationsPage() {
     }
   }
 
-  const onDropHandler = (e: React.DragEvent) => {
-    e.preventDefault()
-    if (e.dataTransfer?.files && e.dataTransfer.files[0]) {
-      setFile(e.dataTransfer.files[0])
-    }
-  }
-
-  const onFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setFile(e.target.files[0])
-    }
-  }
-
-  const preventDefault = (e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-  }
-
-  const handleUpload = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!title.trim()) return alert('عنوان فایل را وارد کنید')
-    if (!file) return alert('فایل را انتخاب کنید')
-    if (!recipientId) return alert('مخاطب را انتخاب کنید')
-
-    setIsSending(true)
-    try {
-      const res = await fetch('/api/conversations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title,
-          fileName: file.name,
-          fileType: file.type,
-          fileSize: file.size,
-          recipientId,
-          uploadedBy: currentUser.id,
-        })
-      })
-      if (res.ok) {
-        const created = await res.json()
-        setConversations(prev => [created, ...prev])
-        setTitle('')
-        setFile(null)
-        setRecipientId('')
-        setActiveTab('list')
-      } else {
-        const err = await res.json()
-        alert(err.error || 'خطا در ارسال مکاتبه')
-      }
-    } catch (e) {
-      alert('خطای شبکه')
-    } finally {
-      setIsSending(false)
-    }
-  }
-
   const readFileAsDataUrl = (file: File): Promise<string> => new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = () => resolve(String(reader.result))
@@ -239,137 +263,85 @@ export default function ConversationsPage() {
     reader.readAsDataURL(file)
   })
 
-  const onPickGroupAttachment = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const f = e.target.files[0]
-      setGroupAttachment(f)
-      try {
-        const dataUrl = await readFileAsDataUrl(f)
-        setGroupAttachmentPreview(dataUrl)
-      } catch {
-        setGroupAttachmentPreview('')
-      }
-    }
-  }
-
-  const clearGroupAttachment = () => {
-    setGroupAttachment(null)
-    setGroupAttachmentPreview('')
-    if (groupFileInputRef.current) groupFileInputRef.current.value = ''
-  }
-
-  const sendMessage = async () => {
-    const hasText = !!newMessage.trim()
-    const hasFile = !!groupAttachment
-    if (!hasText && !hasFile) return
-
-    setSendingMsg(true)
-
-    // optimistic append
-    const tempId = Date.now().toString()
-    const optimistic: Message = {
-      id: tempId,
-      userId: currentUser.id,
-      userName: currentUser.name,
-      message: hasText ? newMessage : '',
-      createdAt: new Date().toISOString(),
-      attachment: hasFile ? {
-        name: groupAttachment!.name,
-        type: groupAttachment!.type,
-        size: groupAttachment!.size,
-        dataUrl: groupAttachmentPreview,
-      } : undefined
-    }
-    setMessages(prev => [...prev, optimistic])
-
+  const sendEmployeeMessage = async () => {
+    const hasText = !!employeeInput.trim()
+    const hasFile = !!employeeAttachment
+    if (!selectedEmployeeId || (!hasText && !hasFile) || !currentUser.id) return
+    
+    setSendingEmployeeMsg(true)
+    
     try {
-      const payload: any = { userId: currentUser.id, message: newMessage }
+      let attachmentPayload: any = null
       if (hasFile) {
-        payload.attachment = {
-          name: groupAttachment!.name,
-          type: groupAttachment!.type,
-          size: groupAttachment!.size,
-          dataUrl: groupAttachmentPreview,
+        attachmentPayload = {
+          name: employeeAttachment!.name,
+          type: employeeAttachment!.type,
+          size: employeeAttachment!.size,
+          dataUrl: employeeAttachmentPreview,
         }
       }
-      const res = await fetch('/api/conversations/messages', {
+
+      const res = await fetch(`/api/conversations/messages/${selectedEmployeeId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      })
-      if (res.ok) {
-        const created: Message = await res.json()
-        const normalized: Message = {
-          ...created,
-          userName: created.userName || userMap[String(created.userId || currentUser.id)] || currentUser.name,
-        }
-        // replace optimistic or just append true result; simplest: keep both fine for mock
-      }
-    } catch {}
-    finally {
-      setNewMessage('')
-      clearGroupAttachment()
-      setSendingMsg(false)
-    }
-  }
-
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault()
-    await sendMessage()
-  }
-
-  const handleMessageKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      sendMessage()
-    }
-  }
-
-  const sendDirect = async () => {
-    if (!recipientId || !directInput.trim()) return
-    setSendingDirect(true)
-    try {
-      const res = await fetch(`/api/conversations/messages/${recipientId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fromUserId: currentUser.id, message: directInput })
+        body: JSON.stringify({ 
+          fromUserId: currentUser.id, 
+          message: employeeInput || '',
+          attachment: attachmentPayload
+        })
       })
       if (res.ok) {
         const created = await res.json()
-        setDirectMessages(prev => [...prev, created])
-        setDirectInput('')
+        console.log('✅ Message sent successfully:', created)
+        setEmployeeMessages(prev => [...prev, created])
+        setEmployeeInput('')
+        setEmployeeAttachment(null)
+        setEmployeeAttachmentPreview('')
+        if (employeeFileInputRef.current) employeeFileInputRef.current.value = ''
+        
+        // Refresh messages to get the latest
+        setTimeout(() => {
+          fetchEmployeeMessages()
+        }, 500)
+        
+        // Show success notification
+        if (typeof window !== 'undefined' && 'Notification' in window) {
+          if (Notification.permission === 'granted') {
+            const recipientName = recipients.find(r => r.id === selectedEmployeeId)?.name || 'کارمند'
+            new Notification('پیام ارسال شد', {
+              body: `پیام شما به ${recipientName} ارسال شد`,
+              icon: '/favicon.ico'
+            })
+          }
+        }
       } else {
+        const errorData = await res.json().catch(() => ({ error: 'خطای ناشناخته' }))
+        console.error('❌ Error sending message:', errorData)
+        alert('خطا در ارسال پیام: ' + (errorData.error || 'خطای ناشناخته'))
+        // Optimistic update
         const temp: Message = {
           id: Date.now().toString(),
           fromUserId: currentUser.id,
           fromUserName: currentUser.name,
-          toUserId: recipientId,
-          message: directInput,
+          toUserId: selectedEmployeeId,
+          message: employeeInput || '',
+          attachment: attachmentPayload,
           createdAt: new Date().toISOString()
         }
-        setDirectMessages(prev => [...prev, temp])
-        setDirectInput('')
+        setEmployeeMessages(prev => [...prev, temp])
+        setEmployeeInput('')
+        setEmployeeAttachment(null)
+        setEmployeeAttachmentPreview('')
+        if (employeeFileInputRef.current) employeeFileInputRef.current.value = ''
       }
-    } catch {
-      const temp: Message = {
-        id: Date.now().toString(),
-        fromUserId: currentUser.id,
-        fromUserName: currentUser.name,
-        toUserId: recipientId,
-        message: directInput,
-        createdAt: new Date().toISOString()
-      }
-      setDirectMessages(prev => [...prev, temp])
-      setDirectInput('')
+    } catch (error: any) {
+      console.error('❌ Network error sending message:', error)
+      alert('خطای شبکه در ارسال پیام. لطفاً دوباره تلاش کنید.')
     } finally {
-      setSendingDirect(false)
+      setSendingEmployeeMsg(false)
     }
   }
 
-  const handleDirectSubmit = (e: React.FormEvent) => { e.preventDefault(); sendDirect() }
-  const handleDirectKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => { if (e.key==='Enter' && !e.shiftKey){ e.preventDefault(); sendDirect() } }
-
-  const selectedRecipientName = recipients.find(r=>r.id===recipientId)?.name
 
   const renderAttachment = (att?: Attachment) => {
     if (!att) return null
@@ -409,205 +381,199 @@ export default function ConversationsPage() {
           <div className="px-6 py-4 flex items-center justify-between">
             <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">مکاتبات</h1>
             <div className="flex gap-2">
-              <button onClick={() => setActiveTab('upload')} className={`px-3 py-1 rounded-lg text-sm ${activeTab==='upload'?'bg-blue-600 text-white':'bg-gray-800 text-gray-300'}`}>ارسال فایل</button>
-              <button onClick={() => setActiveTab('list')} className={`px-3 py-1 rounded-lg text-sm ${activeTab==='list'?'bg-blue-600 text-white':'bg-gray-800 text-gray-300'}`}>لیست مکاتبات</button>
-              <button onClick={() => setActiveTab('chat')} className={`px-3 py-1 rounded-lg text-sm ${activeTab==='chat'?'bg-blue-600 text-white':'bg-gray-800 text-gray-300'}`}>چت گروهی</button>
+              <button onClick={() => setActiveTab('employees')} className={`px-3 py-1 rounded-lg text-sm ${activeTab==='employees'?'bg-blue-600 text-white':'bg-gray-800 text-gray-300'}`}>کارمندان</button>
               <button onClick={() => setActiveTab('feedback')} className={`px-3 py-1 rounded-lg text-sm ${activeTab==='feedback'?'bg-blue-600 text-white':'bg-gray-800 text-gray-300'}`}>نظرات به مدیریت</button>
             </div>
           </div>
         </header>
 
         <main className="flex-1 overflow-y-auto p-6">
-          {activeTab === 'upload' && (
-            <div className="max-w-5xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Upload card */}
-              <div className="bg-gray-900/80 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-8 shadow-2xl">
-                <form onSubmit={handleUpload} className="space-y-6">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">عنوان فایل</label>
-                    <input value={title} onChange={e=>setTitle(e.target.value)} className="w-full p-3 bg-gray-800 border border-gray-600 rounded-lg text-white" placeholder="مثال: قرارداد مشتری الف"/>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">انتخاب مخاطب برای چت</label>
-                    <select value={recipientId} onChange={e=>setRecipientId(e.target.value)} className="w-full p-3 bg-gray-800 border border-gray-600 rounded-lg text-white">
-                      <option value="">انتخاب کنید</option>
-                      {recipients.map(r=> <option key={r.id} value={r.id}>{r.name}</option>)}
-                    </select>
-                    {recipientId && (
-                      <div className="mt-2 text-sm text-blue-300">چت با: <span className="font-semibold">{selectedRecipientName}</span></div>
-                    )}
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">انتخاب فایل (Drag & Drop)</label>
-                    <div ref={dropRef} onDrop={onDropHandler} onDragOver={preventDefault} onDragEnter={preventDefault} onDragLeave={preventDefault}
-                      className="w-full border-2 border-dashed border-gray-600 rounded-xl p-8 text-center bg-gray-800/40">
-                      <div className="text-gray-300 mb-3">فایل را بکشید و رها کنید یا از دکمه زیر استفاده کنید</div>
-                      <input type="file" onChange={onFileInput} className="hidden" id="fileInput" />
-                      <label htmlFor="fileInput" className="inline-block bg-gradient-to-r from-blue-600 to-purple-600 text-white px-4 py-2 rounded-lg cursor-pointer">انتخاب فایل</label>
-                      {file && (
-                        <div className="mt-4 text-gray-200 text-sm">{file.name} — {(file.size/1024).toFixed(1)} KB</div>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex justify-end">
-                    <button type="submit" disabled={isSending} className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white px-6 py-3 rounded-lg shadow-lg disabled:opacity-50">{isSending?'در حال ارسال...':'ارسال'}</button>
-                  </div>
-                </form>
-              </div>
-
-              {/* Direct chat card */}
-              <div className="bg-gray-900/80 backdrop-blur-xl border border-gray-700/50 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
-                <div className="px-4 py-3 border-b border-gray-700/50 bg-gray-900/80 flex items-center justify-between">
-                  <div className="flex items-center">
-                    <div className="w-9 h-9 rounded-full bg-purple-600 text-white flex items-center justify-center ml-3">DM</div>
-                    <div>
-                      <div className="text-white font-semibold">گفتگوی خصوصی</div>
-                      <div className="text-xs text-gray-400">{recipientId? `با ${selectedRecipientName}` : 'ابتدا مخاطب را انتخاب کنید'}</div>
-                    </div>
-                  </div>
+          {activeTab === 'employees' && (
+            <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Employee List */}
+              <div className="bg-gray-900/80 backdrop-blur-xl border border-gray-700/50 rounded-2xl shadow-2xl overflow-hidden">
+                <div className="px-4 py-3 border-b border-gray-700/50 bg-gray-900/80">
+                  <h2 className="text-lg font-bold text-white">لیست کارمندان</h2>
+                  <p className="text-xs text-gray-400 mt-1">برای شروع چت، کارمند را انتخاب کنید</p>
                 </div>
-
-                <div className="h-96 overflow-y-auto p-4 space-y-2 bg-gradient-to-b from-gray-900/60 to-gray-900">
-                  {recipientId ? (
-                    directMessages.map(m => {
-                      const isMe = m.fromUserId === currentUser.id
-                      return (
-                        <div key={m.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
-                          {!isMe && (
-                            <div className="w-8 h-8 rounded-full bg-gray-700 text-white flex items-center justify-center ml-2 text-xs">
-                              {(m.fromUserName || 'کاربر').slice(0,2)}
-                            </div>
-                          )}
-                          <div className={`max-w-[75%] rounded-2xl px-3 py-2 text-sm shadow ${isMe ? 'bg-purple-600 text-white rounded-br-sm' : 'bg-gray-800 text-gray-100 rounded-bl-sm'}`}>
-                            {!isMe && <div className="text-xs text-purple-300 mb-1">{m.fromUserName}</div>}
-                            <div className="whitespace-pre-wrap leading-6">{m.message}</div>
-                            <div className={`text-[10px] mt-1 ${isMe ? 'text-purple-100/80' : 'text-gray-400'}`}>{new Date(m.createdAt).toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' })}</div>
-                          </div>
-                          {isMe && (
-                            <div className="w-8 h-8 rounded-full bg-purple-700 text-white flex items-center justify-center mr-2 text-xs">
-                              {(currentUser.name).slice(0,2)}
-                            </div>
-                          )}
-                        </div>
-                      )
-                    })
+                <div className="overflow-y-auto max-h-[calc(100vh-250px)]">
+                  {isLoadingEmployees ? (
+                    <div className="flex items-center justify-center py-12">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+                    </div>
+                  ) : recipients.length === 0 ? (
+                    <div className="text-center py-12 text-gray-400">هیچ کارمندی یافت نشد</div>
                   ) : (
-                    <div className="text-gray-400 text-center mt-10">برای شروع گفتگو، مخاطب را انتخاب کنید.</div>
+                    <div className="divide-y divide-gray-700/50">
+                      {recipients.map(emp => (
+                        <button
+                          key={emp.id}
+                          onClick={() => {
+                            setSelectedEmployeeId(emp.id)
+                          }}
+                          className={`w-full px-4 py-3 text-right hover:bg-gray-800/50 transition ${selectedEmployeeId === emp.id ? 'bg-blue-900/30 border-r-4 border-blue-500' : ''}`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center">
+                              <div className={`w-10 h-10 rounded-full ${selectedEmployeeId === emp.id ? 'bg-blue-600' : 'bg-gray-700'} text-white flex items-center justify-center ml-3 text-sm font-semibold`}>
+                                {emp.name.slice(0, 2)}
+                              </div>
+                              <div>
+                                <div className="text-white font-medium">{emp.name}</div>
+                                <div className="text-xs text-gray-400">کارمند</div>
+                              </div>
+                            </div>
+                            {selectedEmployeeId === emp.id && (
+                              <div className="w-2 h-2 rounded-full bg-blue-500"></div>
+                            )}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
                   )}
-                  <div ref={directEndRef} />
                 </div>
-
-                <form onSubmit={handleDirectSubmit} className="p-3 border-t border-gray-700/50 bg-gray-900/80 flex items-end gap-2">
-                  <textarea
-                    value={directInput}
-                    onChange={e=>setDirectInput(e.target.value)}
-                    onKeyDown={handleDirectKeyDown}
-                    rows={1}
-                    placeholder={recipientId ? 'پیام خود را بنویسید...' : 'ابتدا مخاطب را انتخاب کنید'}
-                    disabled={!recipientId}
-                    className="flex-1 max-h-40 p-3 bg-gray-800 border border-gray-700 rounded-xl text-white resize-none focus:outline-none focus:ring-1 focus:ring-purple-500 disabled:opacity-50"
-                  />
-                  <button type="submit" disabled={sendingDirect || !recipientId || !directInput.trim()} className="px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 text-white disabled:opacity-50">
-                    ارسال
-                  </button>
-                </form>
               </div>
-            </div>
-          )}
 
-          {activeTab === 'list' && (
-            <div className="max-w-5xl mx-auto">
-              {isLoadingConvs ? (
-                <div className="flex items-center justify-center h-64"><div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-500"/></div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {conversations.map(c => (
-                    <div key={c.id} className="bg-gray-900/80 border border-gray-700/50 rounded-2xl p-5">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="text-white font-semibold">{c.title}</div>
-                        <div className="text-xs text-gray-500">{c.createdAt}</div>
-                      </div>
-                      <div className="text-gray-300 text-sm mb-1">فایل: {c.fileName}</div>
-                      <div className="text-gray-300 text-sm mb-1">گیرنده: {c.recipientName}</div>
-                      <div className="text-gray-500 text-xs">حجم: {(c.fileSize/1024).toFixed(1)} KB</div>
-                    </div>
-                  ))}
-                  {conversations.length===0 && <div className="text-gray-400">مکاتبه‌ای ثبت نشده است.</div>}
-                </div>
-              )}
-            </div>
-          )}
-
-          {activeTab === 'chat' && (
-            <div className="max-w-3xl mx-auto bg-gray-900/80 border border-gray-700/50 rounded-2xl p-0 overflow-hidden">
-              <div className="px-4 py-3 border-b border-gray-700/50 bg-gray-900/80 flex items-center justify-between">
-                <div className="flex items-center">
-                  <div className="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center ml-3">TG</div>
-                  <div>
-                    <div className="text-white font-semibold">چت گروهی کارکنان</div>
-                    <div className="text-xs text-gray-400">آنلاین</div>
-                  </div>
-                </div>
-                <div className="text-gray-400 text-sm">مشترک بین همه</div>
-              </div>
-              <div ref={chatListRef} className="h-96 overflow-y-auto p-4 space-y-2 bg-gradient-to-b from-gray-900/60 to-gray-900">
-                {messages.map(m => {
-                  const isMe = m.userId === currentUser.id
-                  return (
-                    <div key={m.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
-                      {!isMe && (
-                        <div className="w-8 h-8 rounded-full bg-gray-700 text-white flex items-center justify-center ml-2 text-xs">
-                          {(m.userName || 'کاربر').slice(0,2)}
+              {/* Chat Window */}
+              <div className="lg:col-span-2 bg-gray-900/80 backdrop-blur-xl border border-gray-700/50 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+                {selectedEmployeeId ? (
+                  <>
+                    <div className="px-4 py-3 border-b border-gray-700/50 bg-gray-900/80 flex items-center justify-between">
+                      <div className="flex items-center">
+                        <div className="w-10 h-10 rounded-full bg-purple-600 text-white flex items-center justify-center ml-3">
+                          {recipients.find(r => r.id === selectedEmployeeId)?.name.slice(0, 2) || 'DM'}
                         </div>
-                      )}
-                      <div className={`max-w-[75%] rounded-2xl px-3 py-2 text-sm shadow ${isMe ? 'bg-blue-600 text-white rounded-br-sm' : 'bg-gray-800 text-gray-100 rounded-bl-sm'}`}>
-                        {!isMe && <div className="text-xs text-blue-300 mb-1">{m.userName}</div>}
-                        {m.message && <div className="whitespace-pre-wrap leading-6">{m.message}</div>}
-                        {renderAttachment(m.attachment)}
-                        <div className={`text-[10px] mt-1 ${isMe ? 'text-blue-100/80' : 'text-gray-400'}`}>{new Date(m.createdAt).toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' })}</div>
-                      </div>
-                      {isMe && (
-                        <div className="w-8 h-8 rounded-full bg-blue-700 text-white flex items-center justify-center mr-2 text-xs">
-                          {(currentUser.name).slice(0,2)}
+                        <div>
+                          <div className="text-white font-semibold">{recipients.find(r => r.id === selectedEmployeeId)?.name || 'کارمند'}</div>
+                          <div className="text-xs text-gray-400">گفتگوی خصوصی</div>
                         </div>
-                      )}
+                      </div>
                     </div>
-                  )
-                })}
-                {messages.length===0 && <div className="text-gray-400 text-center mt-10">پیامی وجود ندارد. اولین پیام را ارسال کنید.</div>}
-                <div ref={chatEndRef} />
-              </div>
-              <form onSubmit={handleSendMessage} className="p-3 border-t border-gray-700/50 bg-gray-900/80 flex items-end gap-2">
-                <input type="file" ref={groupFileInputRef} onChange={onPickGroupAttachment} className="hidden" accept="image/*,video/*,application/*" />
-                <button type="button" onClick={() => groupFileInputRef.current?.click()} className="px-3 py-2 rounded-xl bg-gray-800 border border-gray-700 text-gray-200 hover:bg-gray-700">پیوست</button>
-                <textarea
-                  value={newMessage}
-                  onChange={e=>setNewMessage(e.target.value)}
-                  onKeyDown={handleMessageKeyDown}
-                  rows={1}
-                  placeholder="پیام خود را بنویسید... (Enter برای ارسال، Shift+Enter برای خط جدید)"
-                  className="flex-1 max-h-40 p-3 bg-gray-800 border border-gray-700 rounded-xl text-white resize-none focus:outline-none focus:ring-1 focus:ring-blue-500"
-                />
-                <button type="submit" disabled={sendingMsg || (!newMessage.trim() && !groupAttachment)} className="px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 text-white disabled:opacity-50">ارسال</button>
-              </form>
-              {groupAttachment && (
-                <div className="px-3 pb-3">
-                  <div className="border border-gray-700 rounded-xl p-2 bg-gray-900/70 flex items-center justify-between">
-                    <div className="text-xs text-gray-300 truncate">پیوست: {groupAttachment.name} — {(groupAttachment.size/1024).toFixed(1)} KB</div>
-                    <div className="flex items-center gap-2">
-                      {groupAttachmentPreview && groupAttachment.type.startsWith('image/') && (
-                        <img src={groupAttachmentPreview} className="w-10 h-10 object-cover rounded border border-gray-700" alt="preview" />
+
+                    <div className="h-[calc(100vh-350px)] overflow-y-auto p-4 space-y-2 bg-gradient-to-b from-gray-900/60 to-gray-900">
+                      {employeeMessages.map(m => {
+                        const isMe = m.fromUserId === currentUser.id
+                        return (
+                          <div key={m.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
+                            {!isMe && (
+                              <div className="w-8 h-8 rounded-full bg-gray-700 text-white flex items-center justify-center ml-2 text-xs">
+                                {(m.fromUserName || 'کاربر').slice(0, 2)}
+                              </div>
+                            )}
+                            <div className={`max-w-[75%] rounded-2xl px-3 py-2 text-sm shadow ${isMe ? 'bg-purple-600 text-white rounded-br-sm' : 'bg-gray-800 text-gray-100 rounded-bl-sm'}`}>
+                              {!isMe && <div className="text-xs text-purple-300 mb-1">{m.fromUserName}</div>}
+                              {m.message && <div className="whitespace-pre-wrap leading-6">{m.message}</div>}
+                              {renderAttachment(m.attachment)}
+                              <div className={`text-[10px] mt-1 ${isMe ? 'text-purple-100/80' : 'text-gray-400'}`}>{new Date(m.createdAt).toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' })}</div>
+                            </div>
+                            {isMe && (
+                              <div className="w-8 h-8 rounded-full bg-purple-700 text-white flex items-center justify-center mr-2 text-xs">
+                                {(currentUser.name || 'من').slice(0, 2)}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                      {employeeMessages.length === 0 && (
+                        <div className="text-gray-400 text-center mt-10">هنوز پیامی رد و بدل نشده است. اولین پیام را ارسال کنید.</div>
                       )}
-                      {groupAttachmentPreview && groupAttachment.type.startsWith('video/') && (
-                        <video src={groupAttachmentPreview} className="w-16 h-10 object-cover rounded border border-gray-700" />
-                      )}
-                      <button onClick={clearGroupAttachment} className="text-red-400 text-xs px-2 py-1 border border-red-400/40 rounded hover:bg-red-400/10">حذف</button>
+                      <div ref={directEndRef} />
+                    </div>
+
+                    <form onSubmit={(e) => {
+                      e.preventDefault()
+                      if (selectedEmployeeId && currentUser.id) {
+                        sendEmployeeMessage()
+                      }
+                    }} className="p-3 border-t border-gray-700/50 bg-gray-900/80 flex items-end gap-2">
+                      <input 
+                        type="file" 
+                        ref={employeeFileInputRef} 
+                        onChange={async (e) => {
+                          if (e.target.files && e.target.files[0]) {
+                            const f = e.target.files[0]
+                            setEmployeeAttachment(f)
+                            try {
+                              const dataUrl = await readFileAsDataUrl(f)
+                              setEmployeeAttachmentPreview(dataUrl)
+                            } catch {
+                              setEmployeeAttachmentPreview('')
+                            }
+                          }
+                        }} 
+                        className="hidden" 
+                        accept="image/*,video/*,application/*" 
+                      />
+                      <button 
+                        type="button" 
+                        onClick={() => employeeFileInputRef.current?.click()} 
+                        className="px-3 py-2 rounded-xl bg-gray-800 border border-gray-700 text-gray-200 hover:bg-gray-700"
+                        disabled={!selectedEmployeeId}
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828L18 9.828M16 5h6m0 0v6m0-6L10 17" />
+                        </svg>
+                      </button>
+                      <textarea
+                        value={employeeInput}
+                        onChange={e => setEmployeeInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault()
+                            if (selectedEmployeeId && currentUser.id) {
+                              sendEmployeeMessage()
+                            }
+                          }
+                        }}
+                        rows={1}
+                        placeholder={selectedEmployeeId ? 'پیام خود را بنویسید...' : 'ابتدا کارمند را انتخاب کنید'}
+                        disabled={!selectedEmployeeId || !currentUser.id}
+                        className="flex-1 max-h-40 p-3 bg-gray-800 border border-gray-700 rounded-xl text-white resize-none focus:outline-none focus:ring-1 focus:ring-purple-500 disabled:opacity-50"
+                      />
+                      <button 
+                        type="submit" 
+                        disabled={sendingEmployeeMsg || !selectedEmployeeId || (!employeeInput.trim() && !employeeAttachment) || !currentUser.id} 
+                        className="px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 text-white disabled:opacity-50"
+                      >
+                        ارسال
+                      </button>
+                    </form>
+                    {employeeAttachment && (
+                      <div className="px-3 pb-3">
+                        <div className="border border-gray-700 rounded-xl p-2 bg-gray-900/70 flex items-center justify-between">
+                          <div className="text-xs text-gray-300 truncate">پیوست: {employeeAttachment.name} — {(employeeAttachment.size/1024).toFixed(1)} KB</div>
+                          <div className="flex items-center gap-2">
+                            {employeeAttachmentPreview && employeeAttachment.type.startsWith('image/') && (
+                              <img src={employeeAttachmentPreview} className="w-10 h-10 object-cover rounded border border-gray-700" alt="preview" />
+                            )}
+                            {employeeAttachmentPreview && employeeAttachment.type.startsWith('video/') && (
+                              <video src={employeeAttachmentPreview} className="w-16 h-10 object-cover rounded border border-gray-700" />
+                            )}
+                            <button onClick={() => {
+                              setEmployeeAttachment(null)
+                              setEmployeeAttachmentPreview('')
+                              if (employeeFileInputRef.current) employeeFileInputRef.current.value = ''
+                            }} className="text-red-400 text-xs px-2 py-1 border border-red-400/40 rounded hover:bg-red-400/10">حذف</button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="flex items-center justify-center h-full text-gray-400">
+                    <div className="text-center">
+                      <svg className="w-16 h-16 mx-auto mb-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                      </svg>
+                      <p className="text-lg mb-2">کارمندی انتخاب نشده است</p>
+                      <p className="text-sm">برای شروع گفتگو، کارمند را از لیست سمت راست انتخاب کنید</p>
                     </div>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           )}
+
 
           {activeTab === 'feedback' && (
             <div className="max-w-3xl mx-auto bg-gray-900/80 border border-gray-700/50 rounded-2xl p-6">

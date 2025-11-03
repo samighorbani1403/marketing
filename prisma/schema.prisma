@@ -370,3 +370,55 @@ model Absence {
 
   @@map("absences")
 }
+
+model DirectMessage {
+  id              String    @id @default(cuid())
+  fromUserId      String    // ID of sender
+  fromUserName    String    // Name of sender
+  toUserId        String    // ID of recipient
+  toUserName      String?   // Name of recipient
+  message         String    // Message text
+  attachmentName  String?   // Name of attached file
+  attachmentType  String?   // MIME type of attachment
+  attachmentSize  Int?      // Size in bytes
+  attachmentDataUrl String? // Base64 encoded file data
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([fromUserId])
+  @@index([toUserId])
+  @@map("direct_messages")
+}
+
+model Conversation {
+  id              String    @id @default(cuid())
+  title           String
+  fileName        String?
+  fileType        String?
+  fileSize        Int?
+  fileDataUrl     String?   // Base64 encoded file
+  senderId        String?
+  senderName      String
+  recipientId     String?
+  recipientName   String?
+  message         String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@map("conversations")
+}
+
+model GroupMessage {
+  id              String    @id @default(cuid())
+  userId          String    // ID of sender
+  userName        String    // Name of sender
+  message         String    // Message text
+  attachmentName  String?   // Name of attached file
+  attachmentType  String?   // MIME type of attachment
+  attachmentSize  Int?      // Size in bytes
+  attachmentDataUrl String? // Base64 encoded file data
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@map("group_messages")
+}

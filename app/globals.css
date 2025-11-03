@@ -24,8 +24,13 @@
   }
 }
 
+* {
+  font-family: 'IRANSans', sans-serif !important;
+}
+
+html,
 body {
-  font-family: 'IRANSans', sans-serif;
+  font-family: 'IRANSans', sans-serif !important;
   color: rgb(var(--foreground-rgb));
   background: linear-gradient(
       to bottom,

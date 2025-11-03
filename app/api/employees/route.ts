@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import bcrypt from 'bcryptjs';
 
 export async function GET(request: NextRequest) {
   try {
@@ -142,6 +143,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Hash password if provided
+    let hashedPassword: string | null = null;
+    if (password && password.trim()) {
+      try {
+        hashedPassword = await bcrypt.hash(password.trim(), 10);
+        console.log('✅ Password hashed successfully');
+      } catch (hashError) {
+        console.error('❌ Error hashing password:', hashError);
+        return NextResponse.json(
+          { error: 'خطا در رمزگذاری رمز عبور' },
+          { status: 500 }
+        );
+      }
+    }
+
     // Try to access employee model - if it fails, we'll catch it below
     // Create employee in database with proper error handling
     let employee;
@@ -171,8 +187,8 @@ export async function POST(request: NextRequest) {
           salary: salary ? parseInt(salary) : null,
           position: position || null,
           employeeRank: employeeRank || null,
-          username: username || null,
-          password: password || null,
+          username: username?.trim() || null,
+          password: hashedPassword,
           terminationDate: terminationDate ? new Date(terminationDate) : null,
           terminationReason: terminationReason || null
         }

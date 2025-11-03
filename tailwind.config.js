@@ -9,6 +9,7 @@ module.exports = {
     extend: {
       fontFamily: {
         'sans': ['IRANSans', 'sans-serif'],
+        'IRANSans': ['IRANSans', 'sans-serif'],
       },
       backgroundImage: {
         'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',

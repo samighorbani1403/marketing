@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 export default function LoginPage() {
   const [formData, setFormData] = useState({
     email: '',
+    username: '',
     password: ''
   })
   const [isLoading, setIsLoading] = useState(false)
@@ -24,7 +25,12 @@ export default function LoginPage() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          password: formData.password,
+          ...(mode === 'admin' 
+            ? { email: formData.email } 
+            : (formData.username ? { username: formData.username } : { email: formData.email }))
+        }),
       })
 
       const data = await response.json()
@@ -99,27 +105,46 @@ export default function LoginPage() {
 
             {/* Form */}
             <form onSubmit={handleSubmit} className="relative z-10 space-y-6">
-              {/* Email Field */}
+              {/* Email/Username Field */}
               <div className="space-y-2">
-                <label htmlFor="email" className="block text-sm font-medium text-gray-300">
-                  آدرس ایمیل
+                <label htmlFor={mode === 'admin' ? 'email' : 'username'} className="block text-sm font-medium text-gray-300">
+                  {mode === 'admin' ? 'آدرس ایمیل' : 'نام کاربری یا ایمیل'}
                 </label>
                 <div className="relative group">
                   <div className="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none">
                     <svg className="h-5 w-5 text-gray-500 group-focus-within:text-cyan-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207" />
+                      {mode === 'admin' ? (
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207" />
+                      ) : (
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                      )}
                     </svg>
                   </div>
-                  <input
-                    type="email"
-                    id="email"
-                    name="email"
-                    value={formData.email}
-                    onChange={handleChange}
-                    required
-                    className="w-full pr-12 pl-4 py-4 bg-gray-800/50 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all duration-300 hover:bg-gray-800/70"
-                    placeholder="example@domain.com"
-                  />
+                  {mode === 'admin' ? (
+                    <input
+                      type="email"
+                      id="email"
+                      name="email"
+                      value={formData.email}
+                      onChange={handleChange}
+                      required
+                      className="w-full pr-12 pl-4 py-4 bg-gray-800/50 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all duration-300 hover:bg-gray-800/70"
+                      placeholder="example@domain.com"
+                    />
+                  ) : (
+                    <input
+                      type="text"
+                      id="username"
+                      name="username"
+                      value={formData.username}
+                      onChange={(e) => {
+                        setFormData({ ...formData, username: e.target.value, email: e.target.value })
+                      }}
+                      required
+                      className="w-full pr-12 pl-4 py-4 bg-gray-800/50 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all duration-300 hover:bg-gray-800/70"
+                      placeholder="نام کاربری یا ایمیل"
+                    />
+                  )}
                 </div>
               </div>
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import bcrypt from 'bcryptjs';
 
 export async function GET(
   request: NextRequest,
@@ -118,14 +119,24 @@ export async function PUT(
       salary: salary ? parseInt(salary) : null,
       position: position || null,
       employeeRank: employeeRank || null,
-      username: username || null,
+      username: username?.trim() || null,
       terminationDate: terminationDate ? new Date(terminationDate) : null,
       terminationReason: terminationReason || null
     };
 
-    // Only update password if provided
+    // Only update password if provided - hash it
     if (password && password.trim()) {
-      updateData.password = password.trim();
+      try {
+        const hashedPassword = await bcrypt.hash(password.trim(), 10);
+        updateData.password = hashedPassword;
+        console.log('✅ Password hashed successfully for update');
+      } catch (hashError) {
+        console.error('❌ Error hashing password:', hashError);
+        return NextResponse.json(
+          { error: 'خطا در رمزگذاری رمز عبور' },
+          { status: 500 }
+        );
+      }
     }
 
     // Update employee in database
