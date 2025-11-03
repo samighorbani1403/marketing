@@ -13,16 +13,33 @@ export async function GET(request: NextRequest) {
       where.type = 'public'
     } else if (type === 'individual' && userId) {
       where.type = 'individual'
+      // recipientIds is comma-separated string like "id1,id2,id3"
+      // We need to check if userId is in this string
       where.OR = [
         { recipientIds: { contains: userId } },
-        { recipientIds: userId }
+        { recipientIds: userId },
+        // Also check if it starts with userId, (for first item)
+        // ends with userId (for last item), or contains ,userId, (for middle item)
+        { recipientIds: { startsWith: userId + ',' } },
+        { recipientIds: { endsWith: ',' + userId } }
       ]
     } else if (userId) {
       // Return both public and individual for this user
       where.OR = [
         { type: 'public' },
-        { type: 'individual', recipientIds: { contains: userId } },
-        { type: 'individual', recipientIds: userId }
+        {
+          AND: [
+            { type: 'individual' },
+            {
+              OR: [
+                { recipientIds: { contains: userId } },
+                { recipientIds: userId },
+                { recipientIds: { startsWith: userId + ',' } },
+                { recipientIds: { endsWith: ',' + userId } }
+              ]
+            }
+          ]
+        }
       ]
     }
 
@@ -102,55 +119,78 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const announcement = await (prisma as any).announcement.create({
-      data: {
-        type,
-        title: title.trim(),
-        body: body.trim(),
-        createdBy: createdBy || 'مدیر سیستم',
-        createdById: createdById || null,
-        recipientIds: type === 'individual' ? recipientIds : null,
-        recipientNames: type === 'individual' ? recipientNames : null
-      }
+    if (!prisma) {
+      console.error('❌ Prisma client is not available')
+      return NextResponse.json(
+        { error: 'خطا در اتصال به دیتابیس' },
+        { status: 500 }
+      )
+    }
+
+    // Check if announcement model exists
+    if (!('announcement' in prisma)) {
+      console.error('❌ Announcement model not found in Prisma')
+      const availableModels = Object.keys(prisma).filter(key => !key.startsWith('$') && typeof prisma[key as keyof typeof prisma] === 'object')
+      return NextResponse.json(
+        { 
+          error: `مدل Announcement در دیتابیس وجود ندارد. مدل‌های موجود: ${availableModels.join(', ')}. لطفاً سرور را متوقف کنید و npx prisma generate و npx prisma db push اجرا کنید.` 
+        },
+        { status: 500 }
+      )
+    }
+
+    console.log('📢 Creating announcement:', {
+      type,
+      title: title.trim(),
+      hasBody: !!body.trim(),
+      recipientIds,
+      recipientNames
     })
 
-    return NextResponse.json({
-      success: true,
-      announcement: {
-        id: announcement.id,
-        type: announcement.type,
-        title: announcement.title,
-        createdAt: announcement.createdAt.toISOString()
-      }
-    })
+    let announcement
+    try {
+      announcement = await (prisma as any).announcement.create({
+        data: {
+          type,
+          title: title.trim(),
+          body: body.trim(),
+          createdBy: createdBy || 'مدیر سیستم',
+          createdById: createdById || null,
+          recipientIds: type === 'individual' ? recipientIds : null,
+          recipientNames: type === 'individual' ? recipientNames : null
+        }
+      })
+
+      console.log('✅ Announcement created successfully:', announcement.id)
+
+      return NextResponse.json({
+        success: true,
+        announcement: {
+          id: announcement.id,
+          type: announcement.type,
+          title: announcement.title,
+          createdAt: announcement.createdAt.toISOString()
+        }
+      })
+    } catch (dbError: any) {
+      console.error('❌ Error creating announcement in database:', dbError)
+      return NextResponse.json(
+        { 
+          error: 'خطا در ذخیره اطلاعیه در دیتابیس: ' + (dbError.message || 'خطای ناشناخته')
+        },
+        { status: 500 }
+      )
+    }
 
   } catch (error: any) {
-    console.error('❌ Error creating announcement:', error)
+    console.error('❌ Error in POST announcement:', error)
     console.error('Error details:', {
       code: error.code,
       message: error.message,
       meta: error.meta
     })
 
-    if (error.code === 'P2021' || error.message?.includes('does not exist')) {
-      return NextResponse.json(
-        {
-          error: 'جدول اطلاعیه‌ها در دیتابیس وجود ندارد. لطفاً migration انجام دهید:\nnpx prisma db push'
-        },
-        { status: 500 }
-      )
-    }
-
-    if (error.message?.includes('Cannot read properties') || error.message?.includes('undefined')) {
-      const availableModels = Object.keys(prisma).filter(key => !key.startsWith('$') && typeof prisma[key as keyof typeof prisma] === 'object')
-      return NextResponse.json(
-        {
-          error: `مدل Announcement در Prisma Client وجود ندارد.\n\nمدل‌های موجود: ${availableModels.join(', ')}\n\nلطفاً:\n1. سرور را متوقف کنید (Ctrl+C)\n2. npx prisma generate اجرا کنید\n3. npx prisma db push اجرا کنید\n4. سرور را restart کنید`
-        },
-        { status: 500 }
-      )
-    }
-
+    // This catch block should not be reached if database operations are wrapped in inner try-catch
     return NextResponse.json(
       { 
         error: error.message || 'خطا در ایجاد اطلاعیه'

@@ -113,6 +113,29 @@ export default function ConversationsPage() {
             id: emp.id,
             name: emp.fullName || 'کارمند'
           }))
+          
+          // Add admin to the list if current user is an employee
+          // Check if current user is employee (not admin)
+          try {
+            const userRes = await fetch('/api/auth/me')
+            if (userRes.ok) {
+              const userData = await userRes.json()
+              // If user is not admin (role !== 'admin'), add admin to recipients
+              if (userData.role !== 'admin') {
+                employeeList.unshift({
+                  id: '1', // Admin ID from login
+                  name: 'مدیر سیستم'
+                })
+              }
+            }
+          } catch (e) {
+            // If we can't determine user role, add admin anyway
+            employeeList.unshift({
+              id: '1',
+              name: 'مدیر سیستم'
+            })
+          }
+          
           setRecipients(employeeList)
         }
       }
@@ -128,14 +151,61 @@ export default function ConversationsPage() {
   const fetchEmployeeMessages = async () => {
     if (selectedEmployeeId && currentUser.id) {
       try {
+        // Fetch direct messages
         const res = await fetch(`/api/conversations/messages/${selectedEmployeeId}?currentUserId=${currentUser.id}`)
+        let messages: Message[] = []
+        
         if (res.ok) {
           const data = await res.json()
-          setEmployeeMessages((data.messages || []) as Message[])
+          messages = (data.messages || []) as Message[]
         }
+
+        // If chatting with admin (ID = '1'), also fetch correspondence files
+        if (selectedEmployeeId === '1') {
+          try {
+            const corrRes = await fetch(`/api/correspondence?recipientId=${currentUser.id}`)
+            if (corrRes.ok) {
+              const corrData = await corrRes.json()
+              if (corrData.success && corrData.correspondences) {
+                // Convert correspondence files to messages
+                const corrMessages: Message[] = corrData.correspondences.map((corr: any) => ({
+                  id: `corr_${corr.id}`,
+                  fromUserId: corr.senderId || '1',
+                  fromUserName: corr.senderName || 'مدیر سیستم',
+                  toUserId: corr.recipientId || currentUser.id,
+                  message: corr.message || '',
+                  createdAt: corr.createdAt,
+                  attachment: corr.fileName ? {
+                    name: corr.fileName,
+                    type: corr.fileType || '',
+                    size: corr.fileSize || 0,
+                    dataUrl: corr.fileDataUrl || null,
+                    url: null
+                  } : undefined
+                }))
+                // Merge and sort by date
+                messages = [...messages, ...corrMessages].sort((a, b) => {
+                  return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+                })
+              }
+            }
+          } catch (corrError) {
+            console.error('Error fetching correspondences:', corrError)
+          }
+        }
+
+        // Only update if messages actually changed (prevent unnecessary re-renders)
+        setEmployeeMessages(prev => {
+          const prevIds = new Set(prev.map(m => m.id))
+          const newIds = new Set(messages.map(m => m.id))
+          const hasChanged = prev.length !== messages.length || 
+                           messages.some(m => !prevIds.has(m.id)) ||
+                           prev.some(m => !newIds.has(m.id))
+          return hasChanged ? messages : prev
+        })
       } catch (error) {
         console.error('Error fetching messages:', error)
-        setEmployeeMessages([])
+        // Don't clear messages on error to prevent flickering
       }
     } else {
       setEmployeeMessages([])
@@ -143,26 +213,29 @@ export default function ConversationsPage() {
   }
 
   useEffect(() => {
-    fetchEmployeeMessages()
-    
-    // Poll for new messages every 3 seconds
-    const interval = setInterval(() => {
-      if (selectedEmployeeId && currentUser.id) {
-        fetchEmployeeMessages()
-      }
-    }, 3000)
+    if (selectedEmployeeId && currentUser.id) {
+      fetchEmployeeMessages()
+      
+      // Poll for new messages every 2 seconds
+      const interval = setInterval(() => {
+        if (selectedEmployeeId && currentUser.id) {
+          fetchEmployeeMessages()
+        }
+      }, 2000)
 
-    return () => clearInterval(interval)
+      return () => clearInterval(interval)
+    }
   }, [selectedEmployeeId, currentUser.id])
 
   useEffect(() => {
     if (activeTab === 'employees' && selectedEmployeeId) {
-      // Scroll to bottom of employee chat
+      // Scroll to bottom of employee chat when messages change
       setTimeout(() => {
         directEndRef.current?.scrollIntoView({ behavior: 'smooth' })
       }, 100)
     }
   }, [employeeMessages, activeTab, selectedEmployeeId])
+
 
   // Check for new messages from other users (notifications)
   useEffect(() => {
@@ -290,9 +363,11 @@ export default function ConversationsPage() {
           attachment: attachmentPayload
         })
       })
+      
       if (res.ok) {
         const created = await res.json()
         console.log('✅ Message sent successfully:', created)
+        // Optimistically add message to UI
         setEmployeeMessages(prev => [...prev, created])
         setEmployeeInput('')
         setEmployeeAttachment(null)
@@ -391,21 +466,53 @@ export default function ConversationsPage() {
           {activeTab === 'employees' && (
             <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-6">
               {/* Employee List */}
-              <div className="bg-gray-900/80 backdrop-blur-xl border border-gray-700/50 rounded-2xl shadow-2xl overflow-hidden">
+              <div className="bg-gray-900/80 backdrop-blur-xl border border-gray-700/50 rounded-2xl shadow-2xl overflow-hidden flex flex-col">
                 <div className="px-4 py-3 border-b border-gray-700/50 bg-gray-900/80">
-                  <h2 className="text-lg font-bold text-white">لیست کارمندان</h2>
-                  <p className="text-xs text-gray-400 mt-1">برای شروع چت، کارمند را انتخاب کنید</p>
+                  <h2 className="text-lg font-bold text-white">مکاتبات</h2>
+                  <p className="text-xs text-gray-400 mt-1">انتخاب مخاطب برای شروع چت</p>
                 </div>
-                <div className="overflow-y-auto max-h-[calc(100vh-250px)]">
+                
+                {/* Chat with Admin Section - Always at top */}
+                <div className="px-4 py-3 border-b border-blue-600/30 bg-gradient-to-r from-blue-900/20 to-purple-900/20">
+                  <button
+                    onClick={() => {
+                      setSelectedEmployeeId('1')
+                    }}
+                    className={`w-full px-4 py-3 text-right hover:bg-blue-900/30 transition rounded-lg ${selectedEmployeeId === '1' ? 'bg-blue-900/50 border-2 border-blue-500' : 'bg-blue-900/20 border-2 border-blue-700/50'}`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center">
+                        <div className={`w-10 h-10 rounded-full ${selectedEmployeeId === '1' ? 'bg-gradient-to-br from-blue-500 to-purple-600' : 'bg-gradient-to-br from-blue-600/80 to-purple-600/80'} text-white flex items-center justify-center ml-3 text-sm font-semibold shadow-lg`}>
+                          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                          </svg>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-white font-semibold">مدیر سیستم</div>
+                          <div className="text-xs text-blue-300">پنل مدیریتی</div>
+                        </div>
+                      </div>
+                      {selectedEmployeeId === '1' && (
+                        <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse"></div>
+                      )}
+                    </div>
+                  </button>
+                </div>
+
+                {/* Employees List */}
+                <div className="flex-1 overflow-y-auto">
+                  <div className="px-4 py-2 border-b border-gray-700/50">
+                    <h3 className="text-sm font-semibold text-gray-400">کارمندان</h3>
+                  </div>
                   {isLoadingEmployees ? (
                     <div className="flex items-center justify-center py-12">
                       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
                     </div>
-                  ) : recipients.length === 0 ? (
+                  ) : recipients.filter(emp => emp.id !== '1').length === 0 ? (
                     <div className="text-center py-12 text-gray-400">هیچ کارمندی یافت نشد</div>
                   ) : (
                     <div className="divide-y divide-gray-700/50">
-                      {recipients.map(emp => (
+                      {recipients.filter(emp => emp.id !== '1').map(emp => (
                         <button
                           key={emp.id}
                           onClick={() => {
@@ -440,13 +547,29 @@ export default function ConversationsPage() {
                   <>
                     <div className="px-4 py-3 border-b border-gray-700/50 bg-gray-900/80 flex items-center justify-between">
                       <div className="flex items-center">
-                        <div className="w-10 h-10 rounded-full bg-purple-600 text-white flex items-center justify-center ml-3">
-                          {recipients.find(r => r.id === selectedEmployeeId)?.name.slice(0, 2) || 'DM'}
-                        </div>
-                        <div>
-                          <div className="text-white font-semibold">{recipients.find(r => r.id === selectedEmployeeId)?.name || 'کارمند'}</div>
-                          <div className="text-xs text-gray-400">گفتگوی خصوصی</div>
-                        </div>
+                        {selectedEmployeeId === '1' ? (
+                          <>
+                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 text-white flex items-center justify-center ml-3 shadow-lg">
+                              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                              </svg>
+                            </div>
+                            <div>
+                              <div className="text-white font-semibold">مدیر سیستم</div>
+                              <div className="text-xs text-blue-300">پنل مدیریتی</div>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div className="w-10 h-10 rounded-full bg-purple-600 text-white flex items-center justify-center ml-3">
+                              {recipients.find(r => r.id === selectedEmployeeId)?.name.slice(0, 2) || 'DM'}
+                            </div>
+                            <div>
+                              <div className="text-white font-semibold">{recipients.find(r => r.id === selectedEmployeeId)?.name || 'کارمند'}</div>
+                              <div className="text-xs text-gray-400">گفتگوی خصوصی</div>
+                            </div>
+                          </>
+                        )}
                       </div>
                     </div>
 

@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 
 const getUserName = async (userId: string): Promise<string> => {
+  // Check if it's admin user
+  if (userId === '1') {
+    return 'مدیر سیستم'
+  }
+
   if (!prisma || !('employee' in prisma)) {
     return 'کاربر'
   }

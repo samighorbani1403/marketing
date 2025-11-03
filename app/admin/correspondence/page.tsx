@@ -1,8 +1,30 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import Link from 'next/link'
 import AdminSidebar from '@/components/AdminSidebar'
+
+interface Message {
+  id: string
+  fromUserId?: string
+  fromUserName?: string
+  toUserId?: string
+  toUserName?: string
+  message: string
+  createdAt: string
+  attachment?: {
+    name: string
+    type: string
+    size: number
+    dataUrl?: string | null
+    url?: string | null
+  }
+}
+
+interface Employee {
+  id: string
+  fullName: string
+  position?: string
+}
 
 interface Correspondence {
   id: string
@@ -19,34 +41,49 @@ interface Correspondence {
   createdAt: string
 }
 
-interface Employee {
-  id: string
-  fullName: string
-  position?: string
-}
-
 export default function AdminCorrespondencePage() {
-  const [activeTab, setActiveTab] = useState<'send' | 'list' | 'feedback'>('send')
-  const [title, setTitle] = useState('')
-  const [file, setFile] = useState<File | null>(null)
-  const [filePreview, setFilePreview] = useState<string>('')
-  const [recipientId, setRecipientId] = useState('')
-  const [message, setMessage] = useState('')
+  const [activeTab, setActiveTab] = useState<'chat' | 'feedback'>('chat')
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('')
+  const [messages, setMessages] = useState<Message[]>([])
+  const [inputMessage, setInputMessage] = useState('')
   const [isSending, setIsSending] = useState(false)
   const [employees, setEmployees] = useState<Employee[]>([])
-  const [correspondences, setCorrespondences] = useState<Correspondence[]>([])
-  const [isLoading, setIsLoading] = useState(false)
-  const [warning, setWarning] = useState<string | null>(null)
-  const dropRef = useRef<HTMLDivElement>(null)
+  const [isLoadingEmployees, setIsLoadingEmployees] = useState(true)
+  const [attachment, setAttachment] = useState<File | null>(null)
+  const [attachmentPreview, setAttachmentPreview] = useState<string>('')
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const [currentUserId] = useState<string>('1') // Admin ID
 
   useEffect(() => {
     fetchEmployees()
-    if (activeTab === 'list') {
-      fetchCorrespondences()
+  }, [])
+
+  useEffect(() => {
+    if (selectedEmployeeId) {
+      fetchMessages()
+      
+      // Poll for new messages every 2 seconds
+      const interval = setInterval(() => {
+        if (selectedEmployeeId) {
+          fetchMessages()
+        }
+      }, 2000)
+      
+      return () => clearInterval(interval)
+    } else {
+      setMessages([])
     }
-  }, [activeTab])
+  }, [selectedEmployeeId])
+
+  useEffect(() => {
+    // Scroll to bottom when new messages arrive
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
+
 
   const fetchEmployees = async () => {
+    setIsLoadingEmployees(true)
     try {
       const res = await fetch('/api/employees')
       if (res.ok) {
@@ -57,157 +94,181 @@ export default function AdminCorrespondencePage() {
       }
     } catch (error) {
       console.error('Error fetching employees:', error)
+    } finally {
+      setIsLoadingEmployees(false)
     }
   }
 
-  const fetchCorrespondences = async () => {
-    setIsLoading(true)
-    setWarning(null)
+  const fetchMessages = async () => {
+    if (!selectedEmployeeId) return
+    
     try {
-      const res = await fetch('/api/correspondence')
+      // Fetch direct messages
+      const res = await fetch(`/api/conversations/messages/${selectedEmployeeId}?currentUserId=${currentUserId}`)
+      let msgs: Message[] = []
+      
       if (res.ok) {
         const data = await res.json()
-        if (data.success && data.correspondences) {
-          setCorrespondences(data.correspondences)
-          setWarning(data.warning || null)
-        }
+        msgs = (data.messages || []) as Message[]
       }
-    } catch (error) {
-      console.error('Error fetching correspondences:', error)
-    } finally {
-      setIsLoading(false)
-    }
-  }
 
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-  }
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    
-    const files = e.dataTransfer.files
-    if (files && files.length > 0) {
-      handleFileSelect(files[0])
-    }
-  }
-
-  const handleFileSelect = (selectedFile: File) => {
-    setFile(selectedFile)
-    
-    if (selectedFile.type.startsWith('image/')) {
-      const reader = new FileReader()
-      reader.onloadend = () => {
-        setFilePreview(reader.result as string)
-      }
-      reader.readAsDataURL(selectedFile)
-    } else {
-      setFilePreview('')
-    }
-  }
-
-  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      handleFileSelect(e.target.files[0])
-    }
-  }
-
-  const removeFile = () => {
-    setFile(null)
-    setFilePreview('')
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    
-    if (!title.trim()) {
-      return alert('عنوان فایل الزامی است')
-    }
-    
-    if (!file) {
-      return alert('لطفاً یک فایل انتخاب کنید')
-    }
-    
-    if (!recipientId) {
-      return alert('لطفاً مخاطب را انتخاب کنید')
-    }
-
-    setIsSending(true)
-    try {
-      // Read file as base64
-      const reader = new FileReader()
-      reader.onloadend = async () => {
-        const fileDataUrl = reader.result as string
-        
-        const recipient = employees.find(emp => emp.id === recipientId)
-        
-        const res = await fetch('/api/correspondence', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            title,
-            fileName: file.name,
-            fileType: file.type,
-            fileSize: file.size,
-            fileDataUrl,
-            senderName: 'مدیر سیستم',
-            recipientId,
-            recipientName: recipient?.fullName || 'کارمند',
-            message: message.trim() || null
-          })
-        })
-
-        if (res.ok) {
-          const data = await res.json()
-          if (data.success) {
-            alert('فایل با موفقیت ارسال شد')
-            // Reset form
-            setTitle('')
-            setFile(null)
-            setFilePreview('')
-            setRecipientId('')
-            setMessage('')
-            // Switch to list tab
-            setActiveTab('list')
-            fetchCorrespondences()
-          } else {
-            // Show detailed error
-            const errorMsg = data.error || 'خطا در ارسال فایل'
-            alert(errorMsg.split('\n').join('\n'))
+      // Also fetch correspondence files sent to this employee
+      try {
+        const corrRes = await fetch(`/api/correspondence?recipientId=${selectedEmployeeId}`)
+        if (corrRes.ok) {
+          const corrData = await corrRes.json()
+          if (corrData.success && corrData.correspondences) {
+            const corrMessages: Message[] = corrData.correspondences.map((corr: any) => ({
+              id: `corr_${corr.id}`,
+              fromUserId: corr.senderId || '1',
+              fromUserName: corr.senderName || 'مدیر سیستم',
+              toUserId: corr.recipientId,
+              message: corr.message || '',
+              createdAt: corr.createdAt,
+              attachment: corr.fileName ? {
+                name: corr.fileName,
+                type: corr.fileType || '',
+                size: corr.fileSize || 0,
+                dataUrl: corr.fileDataUrl || null,
+                url: null
+              } : undefined
+            }))
+            // Merge and sort by date
+            msgs = [...msgs, ...corrMessages].sort((a, b) => {
+              return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+            })
           }
-        } else {
-          const err = await res.json()
-          const errorMsg = err.error || 'خطا در ارسال فایل'
-          alert(errorMsg.split('\n').join('\n'))
         }
-        setIsSending(false)
+      } catch (corrError) {
+        console.error('Error fetching correspondences:', corrError)
       }
-      reader.readAsDataURL(file)
+
+      // Only update if messages actually changed (prevent unnecessary re-renders)
+      setMessages(prev => {
+        const prevIds = new Set(prev.map(m => m.id))
+        const newIds = new Set(msgs.map(m => m.id))
+        const hasChanged = prev.length !== msgs.length || 
+                         msgs.some(m => !prevIds.has(m.id)) ||
+                         prev.some(m => !newIds.has(m.id))
+        return hasChanged ? msgs : prev
+      })
     } catch (error) {
-      console.error('Error sending file:', error)
-      alert('خطا در اتصال به سرور')
+      console.error('Error fetching messages:', error)
+      // Don't clear messages on error to prevent flickering
+    }
+  }
+
+  const readFileAsDataUrl = (file: File): Promise<string> => 
+    new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(String(reader.result))
+      reader.onerror = reject
+      reader.readAsDataURL(file)
+    })
+
+  const handleFileSelect = async (file: File) => {
+    setAttachment(file)
+    if (file.type.startsWith('image/') || file.type.startsWith('video/')) {
+      try {
+        const dataUrl = await readFileAsDataUrl(file)
+        setAttachmentPreview(dataUrl)
+      } catch {
+        setAttachmentPreview('')
+      }
+    } else {
+      setAttachmentPreview('')
+    }
+  }
+
+  const sendMessage = async () => {
+    const hasText = !!inputMessage.trim()
+    const hasFile = !!attachment
+    if (!selectedEmployeeId || (!hasText && !hasFile)) return
+    
+    setIsSending(true)
+    
+    try {
+      let attachmentPayload: any = null
+      if (hasFile) {
+        const dataUrl = await readFileAsDataUrl(attachment!)
+        attachmentPayload = {
+          name: attachment!.name,
+          type: attachment!.type,
+          size: attachment!.size,
+          dataUrl,
+        }
+      }
+
+      // Send as direct message
+      const res = await fetch(`/api/conversations/messages/${selectedEmployeeId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          fromUserId: currentUserId, 
+          message: inputMessage || '',
+          attachment: attachmentPayload
+        })
+      })
+
+      if (res.ok) {
+        const created = await res.json()
+        // Optimistically add message to UI
+        setMessages(prev => [...prev, created])
+        setInputMessage('')
+        setAttachment(null)
+        setAttachmentPreview('')
+        if (fileInputRef.current) fileInputRef.current.value = ''
+        
+        // Refresh messages to get the latest
+        setTimeout(() => {
+          fetchMessages()
+        }, 500)
+      } else {
+        const errorData = await res.json().catch(() => ({ error: 'خطای ناشناخته' }))
+        console.error('❌ Error sending message:', errorData)
+        alert('خطا در ارسال پیام: ' + (errorData.error || 'خطای ناشناخته'))
+      }
+    } catch (error: any) {
+      console.error('❌ Network error sending message:', error)
+      alert('خطای شبکه در ارسال پیام. لطفاً دوباره تلاش کنید.')
+    } finally {
       setIsSending(false)
     }
   }
 
-  const formatFileSize = (bytes?: number) => {
-    if (!bytes) return '—'
-    if (bytes < 1024) return `${bytes} B`
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-  }
-
-  const downloadFile = (corr: Correspondence) => {
-    if (!corr.fileDataUrl) return
+  const renderAttachment = (att?: Message['attachment']) => {
+    if (!att) return null
+    const isImage = att.type.startsWith('image/')
+    const isVideo = att.type.startsWith('video/')
     
-    const link = document.createElement('a')
-    link.href = corr.fileDataUrl
-    link.download = corr.fileName || 'file'
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
+    if (isImage && (att.dataUrl || att.url)) {
+      return (
+        <div className="mt-2">
+          <img src={att.dataUrl || att.url || ''} alt={att.name} className="max-w-full rounded-lg border border-gray-700" />
+        </div>
+      )
+    }
+    
+    if (isVideo && (att.dataUrl || att.url)) {
+      return (
+        <div className="mt-2">
+          <video src={att.dataUrl || att.url || ''} controls className="max-w-full rounded-lg border border-gray-700" />
+        </div>
+      )
+    }
+    
+    return (
+      <a
+        href={att.dataUrl || att.url || '#'}
+        target="_blank" rel="noreferrer"
+        className="mt-2 inline-flex items-center px-2 py-1 rounded bg-gray-700 text-gray-100 text-xs border border-gray-600"
+      >
+        <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828L18 9.828M16 5h6m0 0v6m0-6L10 17" />
+        </svg>
+        {att.name}
+      </a>
+    )
   }
 
   return (
@@ -216,228 +277,214 @@ export default function AdminCorrespondencePage() {
 
       <div className="flex-1 flex flex-col">
         <header className="bg-gray-900/80 backdrop-blur-xl border-b border-gray-700/50 shadow-2xl">
-          <div className="px-6 py-4">
+          <div className="px-6 py-4 flex items-center justify-between">
             <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
               مدیریت مکاتبات
             </h1>
+            <div className="flex gap-2">
+              <button 
+                onClick={() => setActiveTab('chat')} 
+                className={`px-3 py-1 rounded-lg text-sm ${activeTab === 'chat' ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-300'}`}
+              >
+                چت با کارمندان
+              </button>
+              <button 
+                onClick={() => setActiveTab('feedback')} 
+                className={`px-3 py-1 rounded-lg text-sm ${activeTab === 'feedback' ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-300'}`}
+              >
+                نظرات و انتقادات
+              </button>
+            </div>
           </div>
         </header>
 
         <main className="flex-1 overflow-y-auto p-6">
-          {/* Tabs */}
-          <div className="flex gap-2 mb-6 border-b border-gray-700">
-            <button
-              onClick={() => setActiveTab('send')}
-              className={`px-4 py-2 rounded-t-lg transition ${activeTab === 'send' ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}
-            >
-              ارسال فایل
-            </button>
-            <button
-              onClick={() => setActiveTab('list')}
-              className={`px-4 py-2 rounded-t-lg transition ${activeTab === 'list' ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}
-            >
-              لیست مکاتبات
-            </button>
-            <button
-              onClick={() => setActiveTab('feedback')}
-              className={`px-4 py-2 rounded-t-lg transition ${activeTab === 'feedback' ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}
-            >
-              نظرات و انتقادات
-            </button>
-          </div>
-
-          {/* Send File Tab */}
-          {activeTab === 'send' && (
-            <div className="max-w-3xl mx-auto bg-gray-900/60 border border-gray-800 rounded-2xl p-6">
-              <form onSubmit={handleSubmit} className="space-y-6">
-                <div>
-                  <label className="block text-sm text-gray-300 mb-2">عنوان فایل <span className="text-red-400">*</span></label>
-                  <input
-                    type="text"
-                    value={title}
-                    onChange={e => setTitle(e.target.value)}
-                    required
-                    className="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:border-blue-500 focus:outline-none"
-                    placeholder="مثال: فایل راهنمای جدید"
-                  />
+          {activeTab === 'chat' && (
+            <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Employee List */}
+              <div className="bg-gray-900/80 backdrop-blur-xl border border-gray-700/50 rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+                <div className="px-4 py-3 border-b border-gray-700/50 bg-gray-900/80">
+                  <h2 className="text-lg font-bold text-white">لیست کارمندان</h2>
+                  <p className="text-xs text-gray-400 mt-1">برای شروع چت، کارمند را انتخاب کنید</p>
                 </div>
-
-                <div>
-                  <label className="block text-sm text-gray-300 mb-2">انتخاب مخاطب <span className="text-red-400">*</span></label>
-                  <select
-                    value={recipientId}
-                    onChange={e => setRecipientId(e.target.value)}
-                    required
-                    className="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:border-blue-500 focus:outline-none"
-                  >
-                    <option value="">انتخاب کنید...</option>
-                    {employees.map(emp => (
-                      <option key={emp.id} value={emp.id}>
-                        {emp.fullName} {emp.position ? `(${emp.position})` : ''}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm text-gray-300 mb-2">انتخاب فایل <span className="text-red-400">*</span></label>
-                  <div
-                    ref={dropRef}
-                    onDragOver={handleDragOver}
-                    onDrop={handleDrop}
-                    className="border-2 border-dashed border-gray-700 rounded-lg p-8 text-center hover:border-gray-600 transition cursor-pointer"
-                    onClick={() => document.getElementById('file-input')?.click()}
-                  >
-                    {filePreview ? (
-                      <div className="space-y-4">
-                        <img src={filePreview} alt="Preview" className="max-h-48 mx-auto rounded-lg" />
-                        <div className="text-white">
-                          <p className="font-semibold">{file.name}</p>
-                          <p className="text-sm text-gray-400">{formatFileSize(file.size)}</p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            removeFile()
-                          }}
-                          className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm"
-                        >
-                          حذف فایل
-                        </button>
-                      </div>
-                    ) : file ? (
-                      <div className="space-y-4">
-                        <svg className="w-16 h-16 mx-auto text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                        </svg>
-                        <div className="text-white">
-                          <p className="font-semibold">{file.name}</p>
-                          <p className="text-sm text-gray-400">{formatFileSize(file.size)}</p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            removeFile()
-                          }}
-                          className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm"
-                        >
-                          حذف فایل
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="space-y-4">
-                        <svg className="w-16 h-16 mx-auto text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                        </svg>
-                        <div>
-                          <p className="text-white font-semibold">فایل را اینجا بکشید یا کلیک کنید</p>
-                          <p className="text-gray-400 text-sm mt-2">پشتیبانی از تمام انواع فایل</p>
-                        </div>
-                      </div>
-                    )}
-                    <input
-                      id="file-input"
-                      type="file"
-                      className="hidden"
-                      onChange={handleFileInputChange}
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm text-gray-300 mb-2">پیام (اختیاری)</label>
-                  <textarea
-                    value={message}
-                    onChange={e => setMessage(e.target.value)}
-                    rows={3}
-                    className="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:border-blue-500 focus:outline-none"
-                    placeholder="پیام همراه فایل..."
-                  />
-                </div>
-
-                <div className="flex justify-end gap-3">
-                  <button
-                    type="submit"
-                    disabled={isSending}
-                    className="px-6 py-3 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
-                  >
-                    {isSending ? 'در حال ارسال...' : 'ارسال فایل'}
-                  </button>
-                </div>
-              </form>
-            </div>
-          )}
-
-          {/* List Tab */}
-          {activeTab === 'list' && (
-            <div className="space-y-4">
-              {warning && (
-                <div className="mb-4 p-4 bg-yellow-900/30 border border-yellow-700 rounded-lg text-yellow-300">
-                  <div className="flex items-center gap-2">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                    </svg>
-                    <span>{warning}</span>
-                  </div>
-                </div>
-              )}
-              {isLoading ? (
-                <div className="flex justify-center py-12">
-                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
-                </div>
-              ) : correspondences.length === 0 ? (
-                <div className="text-center py-12 text-gray-400">
-                  هیچ مکاتبه‌ای ثبت نشده است
-                </div>
-              ) : (
-                correspondences.map(corr => (
-                  <div key={corr.id} className="bg-gray-900/60 border border-gray-800 rounded-xl p-6">
-                    <div className="flex justify-between items-start mb-4">
-                      <div>
-                        <h3 className="text-white font-semibold text-lg">{corr.title}</h3>
-                        <p className="text-gray-400 text-sm mt-1">
-                          از: {corr.senderName} → به: {corr.recipientName || '—'}
-                        </p>
-                      </div>
-                      <span className="text-xs text-gray-500">
-                        {new Date(corr.createdAt).toLocaleDateString('fa-IR')}
-                      </span>
+                
+                <div className="flex-1 overflow-y-auto">
+                  {isLoadingEmployees ? (
+                    <div className="flex items-center justify-center py-12">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
                     </div>
-                    
-                    {corr.fileName && (
-                      <div className="mb-4 p-3 bg-gray-800/50 rounded-lg flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <svg className="w-8 h-8 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                          </svg>
-                          <div>
-                            <p className="text-white font-medium">{corr.fileName}</p>
-                            <p className="text-gray-400 text-xs">{formatFileSize(corr.fileSize)}</p>
+                  ) : employees.length === 0 ? (
+                    <div className="text-center py-12 text-gray-400">هیچ کارمندی یافت نشد</div>
+                  ) : (
+                    <div className="divide-y divide-gray-700/50">
+                      {employees.map(emp => (
+                        <button
+                          key={emp.id}
+                          onClick={() => setSelectedEmployeeId(emp.id)}
+                          className={`w-full px-4 py-3 text-right hover:bg-gray-800/50 transition ${selectedEmployeeId === emp.id ? 'bg-blue-900/30 border-r-4 border-blue-500' : ''}`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center">
+                              <div className={`w-10 h-10 rounded-full ${selectedEmployeeId === emp.id ? 'bg-blue-600' : 'bg-gray-700'} text-white flex items-center justify-center ml-3 text-sm font-semibold`}>
+                                {emp.fullName.slice(0, 2)}
+                              </div>
+                              <div>
+                                <div className="text-white font-medium">{emp.fullName}</div>
+                                <div className="text-xs text-gray-400">{emp.position || 'کارمند'}</div>
+                              </div>
+                            </div>
+                            {selectedEmployeeId === emp.id && (
+                              <div className="w-2 h-2 rounded-full bg-blue-500"></div>
+                            )}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Chat Window */}
+              <div className="lg:col-span-2 bg-gray-900/80 backdrop-blur-xl border border-gray-700/50 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+                {selectedEmployeeId ? (
+                  <>
+                    <div className="px-4 py-3 border-b border-gray-700/50 bg-gray-900/80 flex items-center justify-between">
+                      <div className="flex items-center">
+                        <div className="w-10 h-10 rounded-full bg-purple-600 text-white flex items-center justify-center ml-3">
+                          {employees.find(r => r.id === selectedEmployeeId)?.fullName.slice(0, 2) || 'EM'}
+                        </div>
+                        <div>
+                          <div className="text-white font-semibold">
+                            {employees.find(r => r.id === selectedEmployeeId)?.fullName || 'کارمند'}
+                          </div>
+                          <div className="text-xs text-gray-400">گفتگوی خصوصی</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="h-[calc(100vh-350px)] overflow-y-auto p-4 space-y-2 bg-gradient-to-b from-gray-900/60 to-gray-900">
+                      {messages.map(m => {
+                        const isMe = m.fromUserId === currentUserId
+                        return (
+                          <div key={m.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
+                            {!isMe && (
+                              <div className="w-8 h-8 rounded-full bg-gray-700 text-white flex items-center justify-center ml-2 text-xs">
+                                {(m.fromUserName || 'کاربر').slice(0, 2)}
+                              </div>
+                            )}
+                            <div className={`max-w-[75%] rounded-2xl px-3 py-2 text-sm shadow ${isMe ? 'bg-blue-600 text-white rounded-br-sm' : 'bg-gray-800 text-gray-100 rounded-bl-sm'}`}>
+                              {!isMe && <div className="text-xs text-blue-300 mb-1">{m.fromUserName}</div>}
+                              {m.message && <div className="whitespace-pre-wrap leading-6">{m.message}</div>}
+                              {renderAttachment(m.attachment)}
+                              <div className={`text-[10px] mt-1 ${isMe ? 'text-blue-100/80' : 'text-gray-400'}`}>
+                                {new Date(m.createdAt).toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' })}
+                              </div>
+                            </div>
+                            {isMe && (
+                              <div className="w-8 h-8 rounded-full bg-blue-700 text-white flex items-center justify-center mr-2 text-xs">
+                                {'مد'}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                      {messages.length === 0 && (
+                        <div className="text-gray-400 text-center mt-10">هنوز پیامی رد و بدل نشده است. اولین پیام را ارسال کنید.</div>
+                      )}
+                      <div ref={messagesEndRef} />
+                    </div>
+
+                    <form 
+                      onSubmit={(e) => {
+                        e.preventDefault()
+                        sendMessage()
+                      }} 
+                      className="p-3 border-t border-gray-700/50 bg-gray-900/80 flex items-end gap-2"
+                    >
+                      <input 
+                        type="file" 
+                        ref={fileInputRef} 
+                        onChange={async (e) => {
+                          if (e.target.files && e.target.files[0]) {
+                            await handleFileSelect(e.target.files[0])
+                          }
+                        }} 
+                        className="hidden" 
+                        accept="image/*,video/*,application/*" 
+                      />
+                      <button 
+                        type="button" 
+                        onClick={() => fileInputRef.current?.click()} 
+                        className="px-3 py-2 rounded-xl bg-gray-800 border border-gray-700 text-gray-200 hover:bg-gray-700"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828L18 9.828M16 5h6m0 0v6m0-6L10 17" />
+                        </svg>
+                      </button>
+                      <textarea
+                        value={inputMessage}
+                        onChange={e => setInputMessage(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault()
+                            sendMessage()
+                          }
+                        }}
+                        rows={1}
+                        placeholder="پیام خود را بنویسید..."
+                        className="flex-1 max-h-40 p-3 bg-gray-800 border border-gray-700 rounded-xl text-white resize-none focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      />
+                      <button 
+                        type="submit" 
+                        disabled={isSending || (!inputMessage.trim() && !attachment)} 
+                        className="px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 text-white disabled:opacity-50"
+                      >
+                        ارسال
+                      </button>
+                    </form>
+                    {attachment && (
+                      <div className="px-3 pb-3">
+                        <div className="border border-gray-700 rounded-xl p-2 bg-gray-900/70 flex items-center justify-between">
+                          <div className="text-xs text-gray-300 truncate">
+                            پیوست: {attachment.name} — {(attachment.size/1024).toFixed(1)} KB
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {attachmentPreview && attachment.type.startsWith('image/') && (
+                              <img src={attachmentPreview} className="w-10 h-10 object-cover rounded border border-gray-700" alt="preview" />
+                            )}
+                            {attachmentPreview && attachment.type.startsWith('video/') && (
+                              <video src={attachmentPreview} className="w-16 h-10 object-cover rounded border border-gray-700" />
+                            )}
+                            <button 
+                              onClick={() => {
+                                setAttachment(null)
+                                setAttachmentPreview('')
+                                if (fileInputRef.current) fileInputRef.current.value = ''
+                              }} 
+                              className="text-red-400 text-xs px-2 py-1 border border-red-400/40 rounded hover:bg-red-400/10"
+                            >
+                              حذف
+                            </button>
                           </div>
                         </div>
-                        {corr.fileDataUrl && (
-                          <button
-                            onClick={() => downloadFile(corr)}
-                            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm"
-                          >
-                            دانلود
-                          </button>
-                        )}
                       </div>
                     )}
-                    
-                    {corr.message && (
-                      <p className="text-gray-300 text-sm mb-4">{corr.message}</p>
-                    )}
+                  </>
+                ) : (
+                  <div className="flex items-center justify-center h-full text-gray-400">
+                    <div className="text-center">
+                      <svg className="w-16 h-16 mx-auto mb-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                      </svg>
+                      <p className="text-lg mb-2">کارمندی انتخاب نشده است</p>
+                      <p className="text-sm">برای شروع گفتگو، کارمند را از لیست سمت راست انتخاب کنید</p>
+                    </div>
                   </div>
-                ))
-              )}
+                )}
+              </div>
             </div>
           )}
 
-          {/* Feedback Tab */}
           {activeTab === 'feedback' && (
             <PrivateFeedbackTab />
           )}
@@ -610,4 +657,3 @@ function PrivateFeedbackTab() {
     </div>
   )
 }
-

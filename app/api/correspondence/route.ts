@@ -3,6 +3,10 @@ import { prisma } from '@/lib/prisma'
 
 export async function GET(request: NextRequest) {
   try {
+    const { searchParams } = new URL(request.url)
+    const userId = searchParams.get('userId')
+    const recipientId = searchParams.get('recipientId')
+
     // Check if Prisma client is available
     if (!prisma) {
       console.error('❌ Prisma client is not available')
@@ -30,7 +34,22 @@ export async function GET(request: NextRequest) {
       )
     }
 
+    // Build where clause
+    let where: any = {}
+    if (recipientId) {
+      // Get correspondences sent to this user
+      where.recipientId = recipientId
+    } else if (userId) {
+      // Get correspondences where user is either sender or recipient
+      where.OR = [
+        { senderId: userId },
+        { recipientId: userId }
+      ]
+    }
+    // If no userId or recipientId, return all (for admin)
+
     const correspondences = await (prisma as any).correspondence.findMany({
+      where,
       orderBy: {
         createdAt: 'desc'
       }
@@ -135,12 +154,20 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    console.log('📄 Creating correspondence:', {
+      title: title.trim(),
+      fileName: fileName || 'N/A',
+      recipientId: recipientId || 'N/A',
+      recipientName: recipientName || 'N/A',
+      hasFileData: !!fileDataUrl
+    })
+
     const correspondence = await (prisma as any).correspondence.create({
       data: {
         title: title.trim(),
         fileName: fileName || null,
         fileType: fileType || null,
-        fileSize: fileSize ? parseInt(fileSize) : null,
+        fileSize: fileSize ? parseInt(String(fileSize)) : null,
         fileDataUrl: fileDataUrl || null,
         senderId: senderId || null,
         senderName: senderName.trim(),
@@ -150,7 +177,12 @@ export async function POST(request: NextRequest) {
       }
     })
 
-    console.log('✅ Correspondence created successfully:', correspondence.id)
+    console.log('✅ Correspondence created successfully:', {
+      id: correspondence.id,
+      title: correspondence.title,
+      recipientId: correspondence.recipientId,
+      recipientName: correspondence.recipientName
+    })
 
     return NextResponse.json({
       success: true,
